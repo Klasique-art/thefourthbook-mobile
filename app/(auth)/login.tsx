@@ -69,6 +69,26 @@ const extractApiErrorMessage = (data: any, fallback: string): string => {
     );
 };
 
+const normalizeBackendData = (value: unknown): unknown => {
+    if (typeof value !== 'string') return value;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return value;
+    }
+};
+
+const getNestedValue = (source: unknown, path: string[]): unknown => {
+    let current: unknown = source;
+    for (const key of path) {
+        if (!current || typeof current !== 'object' || !(key in (current as Record<string, unknown>))) {
+            return undefined;
+        }
+        current = (current as Record<string, unknown>)[key];
+    }
+    return current;
+};
+
 const LoginFormLoader = () => {
     const { isSubmitting } = useFormikContext<LoginFormValues>();
     return <FormLoader visible={isSubmitting} message="Signing you in..." />;
@@ -140,7 +160,30 @@ const LoginScreen = () => {
             };
             console.log(`[LoginScreen] login failed :: ${JSON.stringify(logPayload)}`);
             console.error(`[LoginScreen] login failed :: ${JSON.stringify(logPayload)}`);
-            const data = error?.response?.data;
+            const data = normalizeBackendData(error?.response?.data);
+            const status = error?.response?.status;
+            const verificationRequired =
+                status === 403 &&
+                (getNestedValue(data, ['data', 'verification_required']) === true ||
+                    getNestedValue(data, ['verification_required']) === true ||
+                    getNestedValue(data, ['error', 'details', 'data', 'verification_required']) === true);
+
+            if (verificationRequired) {
+                const pendingEmail =
+                    String(
+                        getNestedValue(data, ['data', 'email']) ||
+                            getNestedValue(data, ['email']) ||
+                            getNestedValue(data, ['error', 'details', 'data', 'email']) ||
+                            values.email
+                    ).trim();
+                setApiError('Please verify your email before logging in.');
+                router.replace({
+                    pathname: '/(auth)/verify-code',
+                    params: { email: pendingEmail },
+                });
+                return;
+            }
+
             const parsedError = extractApiErrorMessage(
                 data,
                 'Login failed. Please check your email and password.'
