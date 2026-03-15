@@ -14,6 +14,7 @@ import AppText from '@/components/ui/AppText';
 import { useColors } from '@/config';
 import { Contribution } from '@/data/contributions.dummy';
 import { ParticipationStats } from '@/data/participationStats.dummy';
+import { APP_CONFIG } from '@/data/static.home';
 import { dashboardService } from '@/lib/services/dashboardService';
 import { DashboardOverviewData } from '@/types/dashboard.types';
 
@@ -53,11 +54,13 @@ export default function DashboardScreen() {
         [...(overview?.payment_history ?? [])]
             .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0]?.created_at ??
         new Date().toISOString();
+    const totalDrawEntries = Number(overview?.impact?.total_draw_entries ?? 0);
+    const totalContributedUsd = totalDrawEntries * APP_CONFIG.CONTRIBUTION_AMOUNT;
 
     const participationStats: ParticipationStats = {
-        total_contributed_amount: Number(overview?.impact?.total_contributed_amount ?? 0),
+        total_contributed_amount: totalContributedUsd,
         total_contributions_count: Number(overview?.impact?.total_contribution_count ?? 0),
-        total_draw_entries: Number(overview?.impact?.total_draw_entries ?? 0),
+        total_draw_entries: totalDrawEntries,
         successful_referrals: Number(overview?.referral_stats?.successful_referrals ?? 0),
         member_since: memberSince,
         next_payment_due_date:

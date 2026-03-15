@@ -3,10 +3,12 @@ import * as Linking from 'expo-linking';
 import { getCalendars, getLocales } from 'expo-localization';
 import { useFocusEffect } from '@react-navigation/native';
 import * as WebBrowser from 'expo-web-browser';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
 import { Screen } from '@/components';
+import { AppInput } from '@/components/form';
+import AppButton from '@/components/ui/AppButton';
 import AppText from '@/components/ui/AppText';
 import StatusModal from '@/components/ui/StatusModal';
 import {
@@ -20,6 +22,8 @@ import { PAYMENT_CALLBACK_URL } from '@/config/settings';
 import { useTheme } from '@/context/ThemeContext';
 import { drawService } from '@/lib/services/drawService';
 import { paymentService } from '@/lib/services/paymentService';
+import { PayoutBank, payoutAccountService } from '@/lib/services/payoutAccountService';
+import { PayoutAccount } from '@/types/payout-account.types';
 import { ApiPaymentMethod, PaymentHistoryItem } from '@/types/payment.types';
 
 const PENDING_PAYMENT_REFERENCE_KEY = 'thefourthbook_pending_payment_reference';
@@ -94,6 +98,20 @@ export default function WalletScreen() {
     const [paidOverrideCycleId, setPaidOverrideCycleId] = useState<string | null>(null);
     const [nextDueDate, setNextDueDate] = useState<string>(new Date().toISOString());
     const [transactions, setTransactions] = useState<Contribution[]>([]);
+    const [payoutAccounts, setPayoutAccounts] = useState<PayoutAccount[]>([]);
+    const [isPayoutLoading, setIsPayoutLoading] = useState(false);
+    const [isSavingPayoutAccount, setIsSavingPayoutAccount] = useState(false);
+    const [payoutForm, setPayoutForm] = useState({
+        bankName: '',
+        accountNumber: '',
+        bankCode: '',
+        countryCode: '',
+    });
+    const [bankSearchQuery, setBankSearchQuery] = useState('');
+    const [bankOptions, setBankOptions] = useState<PayoutBank[]>([]);
+    const [bankSource, setBankSource] = useState<string | null>(null);
+    const [isBankLookupLoading, setIsBankLookupLoading] = useState(false);
+    const [bankLookupNote, setBankLookupNote] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isAutoRenewUpdating, setIsAutoRenewUpdating] = useState(false);
     const [currentCycleId, setCurrentCycleId] = useState<string | null>(null);
@@ -116,6 +134,18 @@ export default function WalletScreen() {
     });
 
     const currentMonthAmount = 20.00;
+    const bankLookupRequestIdRef = useRef(0);
+    const lastPayoutAccountsRefreshAtRef = useRef(0);
+
+    const payoutStatusPalette = useMemo(
+        () => ({
+            verified: { bg: theme === 'dark' ? '#14532D66' : '#DCFCE766', text: theme === 'dark' ? '#86EFAC' : '#14532D' },
+            manual_review: { bg: theme === 'dark' ? '#713F1266' : '#FEF3C766', text: theme === 'dark' ? '#FDE68A' : '#78350F' },
+            failed: { bg: theme === 'dark' ? '#7F1D1D66' : '#FEE2E266', text: theme === 'dark' ? '#FCA5A5' : '#991B1B' },
+            unverified: { bg: theme === 'dark' ? '#1E3A8A66' : '#DBEAFE66', text: theme === 'dark' ? '#93C5FD' : '#1E3A8A' },
+        }),
+        [theme]
+    );
 
     useEffect(() => {
         const locale = getLocales()?.[0];
@@ -209,6 +239,27 @@ export default function WalletScreen() {
             ? { border: '#FACC15AA', bg: '#713F1266', text: '#FDE68A' }
             : { border: '#92400E99', bg: '#FEF3C766', text: '#78350F' };
     }, [isSelectedMethodCard, theme]);
+    const payoutSectionPalette = useMemo(
+        () =>
+            theme === 'dark'
+                ? {
+                    sectionBorder: '#33415555',
+                    sectionBg: '#0B1220',
+                    cardBorder: '#47556988',
+                    cardBg: '#111827',
+                    title: '#FFFFFF',
+                    text: '#CBD5E1',
+                }
+                : {
+                    sectionBorder: '#CBD5E1',
+                    sectionBg: '#F8FAFC',
+                    cardBorder: '#CBD5E1',
+                    cardBg: '#FFFFFF',
+                    title: '#0F172A',
+                    text: '#334155',
+                },
+        [theme]
+    );
 
     const lastUpdatedLabel = useMemo(() => formatDateTimeLabel(lastSyncedAt), [lastSyncedAt]);
 
@@ -282,6 +333,38 @@ export default function WalletScreen() {
         return normalized === 'success' || normalized === 'completed' || normalized === 'paid';
     };
 
+    const getPayoutStatusLabel = (status: string | null | undefined) => {
+        const normalized = String(status || 'unverified').toLowerCase();
+        if (normalized === 'verified') return 'Verified';
+        if (normalized === 'manual_review') return 'Manual Review';
+        if (normalized === 'failed') return 'Failed';
+        return 'Unverified';
+    };
+
+    const getPayoutAccountNumberLabel = (account: PayoutAccount) => {
+        const raw = account.account_number_masked || account.account_number || '';
+        if (!raw) return 'No account number';
+        const compact = String(raw).replace(/\s+/g, '');
+        if (compact.includes('*')) return compact;
+        if (compact.length <= 4) return compact;
+        return `****${compact.slice(-4)}`;
+    };
+
+    const loadPayoutAccounts = useCallback(async (silent = false) => {
+        if (!silent) setIsPayoutLoading(true);
+        try {
+            const accounts = await payoutAccountService.getAccounts();
+            setPayoutAccounts(accounts);
+            lastPayoutAccountsRefreshAtRef.current = Date.now();
+        } catch (error: any) {
+            if (!silent) {
+                openStatusModal('Payout Accounts', getErrorMessage(error, 'Could not load payout accounts.'), 'error');
+            }
+        } finally {
+            if (!silent) setIsPayoutLoading(false);
+        }
+    }, []);
+
     const loadWalletData = useCallback(async () => {
         try {
             const [status, apiMethods, history, currentDraw] = await Promise.all([
@@ -331,11 +414,12 @@ export default function WalletScreen() {
         } finally {
             setLastSyncedAt(new Date().toISOString());
         }
-    }, []);
+    }, [paidOverrideCycleId]);
 
     useEffect(() => {
         void loadWalletData();
-    }, [loadWalletData]);
+        void loadPayoutAccounts();
+    }, [loadPayoutAccounts, loadWalletData]);
 
     const verifyPendingPaymentIfAny = useCallback(async () => {
         const pendingReference = await AsyncStorage.getItem(PENDING_PAYMENT_REFERENCE_KEY);
@@ -361,28 +445,218 @@ export default function WalletScreen() {
     useFocusEffect(
         useCallback(() => {
             void loadWalletData();
+            void loadPayoutAccounts(true);
             void verifyPendingPaymentIfAny();
 
             const poller = setInterval(() => {
                 void loadWalletData();
+                if (Date.now() - lastPayoutAccountsRefreshAtRef.current > 30000) {
+                    void loadPayoutAccounts(true);
+                }
             }, WALLET_REFRESH_INTERVAL_MS);
 
             return () => clearInterval(poller);
-        }, [loadWalletData, verifyPendingPaymentIfAny])
+        }, [loadPayoutAccounts, loadWalletData, verifyPendingPaymentIfAny])
     );
 
     const handleRefreshWallet = useCallback(async () => {
         setIsRefreshing(true);
         try {
-            await loadWalletData();
+            await Promise.all([loadWalletData(), loadPayoutAccounts(true)]);
         } finally {
             setIsRefreshing(false);
         }
-    }, [loadWalletData]);
+    }, [loadPayoutAccounts, loadWalletData]);
+
+    const handlePayoutFormChange = useCallback((key: keyof typeof payoutForm, value: string) => {
+        setPayoutForm((prev) => ({ ...prev, [key]: value }));
+    }, []);
+
+    const runBankSearch = useCallback(
+        async (queryText: string, countryCodeFilter: string) => {
+            const requestId = ++bankLookupRequestIdRef.current;
+            const trimmedQuery = queryText.trim();
+            if (trimmedQuery.length < 2) {
+                setBankOptions([]);
+                setBankLookupNote(null);
+                setIsBankLookupLoading(false);
+                return;
+            }
+
+            setIsBankLookupLoading(true);
+            try {
+                const banks = await payoutAccountService.searchBanks(trimmedQuery);
+                if (requestId !== bankLookupRequestIdRef.current) return;
+                const normalizedCountry = countryCodeFilter.trim().toUpperCase();
+                const filtered = normalizedCountry
+                    ? banks.filter((bank) => String(bank.country_code || '').toUpperCase() === normalizedCountry)
+                    : banks;
+                setBankOptions(filtered);
+                setBankSource(filtered[0]?.source ?? null);
+                setBankLookupNote(filtered.length === 0 ? 'No bank matches found from search.' : null);
+            } catch {
+                if (requestId !== bankLookupRequestIdRef.current) return;
+                setBankOptions([]);
+                setBankLookupNote('Could not search banks right now. You can still enter bank details manually.');
+            } finally {
+                if (requestId === bankLookupRequestIdRef.current) setIsBankLookupLoading(false);
+            }
+        },
+        []
+    );
+
+    const handleLoadBanksByCountry = useCallback(async () => {
+        const countryCode = payoutForm.countryCode.trim().toUpperCase();
+        if (countryCode.length !== 2) {
+            openStatusModal('Country Code Required', 'Enter a valid 2-letter country code first (for example: US, NG, GH).', 'info');
+            return;
+        }
+        setIsBankLookupLoading(true);
+        try {
+            const payload = await payoutAccountService.getBanksByCountry(countryCode);
+            setBankOptions(payload.banks);
+            setBankSource(payload.source ?? null);
+            if (payload.banks.length === 0) {
+                setBankLookupNote('No banks found for this country. Manual details may be required.');
+            } else if (String(payload.source || '').toLowerCase() === 'manual') {
+                setBankLookupNote('Manual verification route detected. Enter bank name and bank code if needed.');
+            } else {
+                setBankLookupNote(null);
+            }
+        } catch (error: any) {
+            setBankOptions([]);
+            setBankLookupNote(null);
+            openStatusModal('Bank Lookup Failed', getErrorMessage(error, 'Could not load banks for this country.'), 'error');
+        } finally {
+            setIsBankLookupLoading(false);
+        }
+    }, [payoutForm.countryCode]);
+
+    const handleSelectBankOption = useCallback((bank: PayoutBank) => {
+        setPayoutForm((prev) => ({
+            ...prev,
+            bankName: bank.bank_name,
+            bankCode: bank.bank_code,
+            countryCode: String(bank.country_code || prev.countryCode).toUpperCase(),
+        }));
+        setBankSearchQuery(bank.bank_name);
+        setBankLookupNote(null);
+    }, []);
+
+    useEffect(() => {
+        const query = bankSearchQuery.trim();
+        const country = payoutForm.countryCode.trim().toUpperCase();
+        const timer = setTimeout(() => {
+            void runBankSearch(query, country);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [bankSearchQuery, payoutForm.countryCode, runBankSearch]);
+
+    const handleSavePayoutAccount = useCallback(async () => {
+        const bankName = payoutForm.bankName.trim();
+        const accountNumber = payoutForm.accountNumber.replace(/\s+/g, '');
+        const bankCode = payoutForm.bankCode.trim();
+        const countryCode = payoutForm.countryCode.trim().toUpperCase();
+
+        if (!bankName || !accountNumber || !bankCode || countryCode.length !== 2) {
+            openStatusModal('Missing Details', 'Country code, bank name, account number, and bank code are required.', 'info');
+            return;
+        }
+
+        setIsSavingPayoutAccount(true);
+        try {
+            const created = await payoutAccountService.createAccount({
+                bank_name: bankName,
+                account_number: accountNumber,
+                bank_code: bankCode,
+                country_code: countryCode,
+                is_default: payoutAccounts.length === 0,
+            });
+            const verified = await payoutAccountService.verifyAccount(payoutAccountService.getId(created));
+            const status = String(verified.verification_status || 'unverified').toLowerCase();
+            if (status === 'manual_review') {
+                openStatusModal('Account Submitted', "We'll verify this bank account and notify you.", 'info');
+            } else if (status === 'verified') {
+                openStatusModal('Payout Account Ready', 'Your payout bank account has been verified.', 'success');
+            } else {
+                openStatusModal('Verification Pending', 'Your payout account was saved. You can retry verification if needed.', 'info');
+            }
+            setPayoutForm({
+                bankName: '',
+                accountNumber: '',
+                bankCode: '',
+                countryCode: '',
+            });
+            setBankSearchQuery('');
+            setBankOptions([]);
+            setBankLookupNote(null);
+            await loadPayoutAccounts();
+        } catch (error: any) {
+            openStatusModal('Payout Account', getErrorMessage(error, 'Could not save payout account.'), 'error');
+        } finally {
+            setIsSavingPayoutAccount(false);
+        }
+    }, [loadPayoutAccounts, payoutAccounts.length, payoutForm]);
+
+    const handleSetDefaultPayoutAccount = useCallback(async (id: string | number) => {
+        try {
+            await payoutAccountService.setDefaultAccount(id);
+            await loadPayoutAccounts();
+            openStatusModal('Default Updated', 'Default payout account was updated.', 'success');
+        } catch (error: any) {
+            openStatusModal('Payout Account', getErrorMessage(error, 'Could not set default payout account.'), 'error');
+        }
+    }, [loadPayoutAccounts]);
+
+    const handleVerifyPayoutAccount = useCallback(async (id: string | number) => {
+        try {
+            const updated = await payoutAccountService.verifyAccount(id);
+            await loadPayoutAccounts();
+            const status = String(updated.verification_status || 'unverified').toLowerCase();
+            if (status === 'verified') {
+                openStatusModal('Verified', 'This payout account is now verified.', 'success');
+            } else if (status === 'manual_review') {
+                openStatusModal('Manual Review', "We'll verify and notify you once this account is approved.", 'info');
+            } else {
+                openStatusModal('Verification Failed', 'Please update account details and retry verification.', 'error');
+            }
+        } catch (error: any) {
+            openStatusModal('Payout Account', getErrorMessage(error, 'Could not verify payout account.'), 'error');
+        }
+    }, [loadPayoutAccounts]);
+
+    const handleDeletePayoutAccount = useCallback(async (id: string | number) => {
+        try {
+            await payoutAccountService.deleteAccount(id);
+            await loadPayoutAccounts();
+            openStatusModal('Removed', 'Payout account removed.', 'success');
+        } catch (error: any) {
+            openStatusModal('Payout Account', getErrorMessage(error, 'Could not remove payout account.'), 'error');
+        }
+    }, [loadPayoutAccounts]);
 
     const handlePayNow = async () => {
         if (!canPayNow) {
             openStatusModal('Contributions Closed', payDisabledReason ?? 'Contributions are currently unavailable for this cycle.', 'info');
+            return;
+        }
+
+        try {
+            const payoutStatus = await payoutAccountService.getStatus();
+            if (!payoutStatus.default_account) {
+                openStatusModal(
+                    'Set Payout Account First',
+                    'Before paying into a cycle, please add your payout bank account in this Wallet screen.',
+                    'info'
+                );
+                return;
+            }
+        } catch (error: any) {
+            openStatusModal(
+                'Payout Account Check',
+                getErrorMessage(error, 'Could not confirm your payout account setup. Please try again.'),
+                'error'
+            );
             return;
         }
 
@@ -578,6 +852,203 @@ export default function WalletScreen() {
                         onSelectMethod={handleSelectMethod}
                     />
 
+                    <View
+                        className="mb-4 rounded-2xl border p-4"
+                        style={{ borderColor: payoutSectionPalette.sectionBorder, backgroundColor: payoutSectionPalette.sectionBg }}
+                    >
+                        <AppText className="text-base font-bold" style={{ color: payoutSectionPalette.title }}>
+                            Payout Bank Accounts
+                        </AppText>
+                        <AppText className="mt-1 text-xs" style={{ color: payoutSectionPalette.text }}>
+                            Add where winnings should be sent. Card or mobile money methods are not used for payout destination.
+                        </AppText>
+                        <AppText className="mt-1 text-xs" style={{ color: payoutSectionPalette.text }} accessibilityRole="text">
+                            Set a default verified bank account to receive payouts faster.
+                        </AppText>
+
+                        {isPayoutLoading ? (
+                            <AppText className="mt-3 text-xs" style={{ color: payoutSectionPalette.text }}>
+                                Loading payout accounts...
+                            </AppText>
+                        ) : payoutAccounts.length === 0 ? (
+                            <AppText className="mt-3 text-xs" style={{ color: payoutSectionPalette.text }}>
+                                No payout bank account added yet.
+                            </AppText>
+                        ) : (
+                            payoutAccounts.map((account) => {
+                                const statusKey = String(account.verification_status || 'unverified').toLowerCase() as keyof typeof payoutStatusPalette;
+                                const palette = payoutStatusPalette[statusKey] || payoutStatusPalette.unverified;
+                                const accountId = payoutAccountService.getId(account);
+                                return (
+                                    <View
+                                        key={String(accountId)}
+                                        className="mt-3 rounded-xl border p-3"
+                                        style={{
+                                            borderColor: payoutSectionPalette.cardBorder,
+                                            backgroundColor: payoutSectionPalette.cardBg,
+                                        }}
+                                    >
+                                        <View className="flex-row items-center justify-between">
+                                            <AppText className="text-sm font-semibold" style={{ color: payoutSectionPalette.title }}>
+                                                {account.bank_name || 'Bank Account'} {account.is_default ? '(Default)' : ''}
+                                            </AppText>
+                                            <View className="rounded-full px-3 py-1" style={{ backgroundColor: palette.bg }}>
+                                                <AppText className="text-[11px] font-semibold uppercase" style={{ color: palette.text }}>
+                                                    {getPayoutStatusLabel(account.verification_status)}
+                                                </AppText>
+                                            </View>
+                                        </View>
+                                        <AppText className="mt-1 text-xs" style={{ color: payoutSectionPalette.text }}>
+                                            {(account.account_name || 'Account holder pending')} - {getPayoutAccountNumberLabel(account)}
+                                        </AppText>
+                                        {String(account.verification_status || '').toLowerCase() === 'verified' && account.account_name ? (
+                                            <AppText className="mt-1 text-xs font-semibold" style={{ color: payoutSectionPalette.text }}>
+                                                Verified account holder: {account.account_name}
+                                            </AppText>
+                                        ) : null}
+
+                                        <View className="mt-3 flex-row flex-wrap gap-2">
+                                            {!account.is_default ? (
+                                                <AppButton
+                                                    title="Set Default"
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    onClick={() => handleSetDefaultPayoutAccount(accountId)}
+                                                    accessibilityLabel={`Set ${account.bank_name || 'bank account'} as default payout account`}
+                                                />
+                                            ) : null}
+                                            {String(account.verification_status || '').toLowerCase() !== 'verified' ? (
+                                                <AppButton
+                                                    title="Verify"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => handleVerifyPayoutAccount(accountId)}
+                                                    accessibilityLabel={`Verify ${account.bank_name || 'bank account'}`}
+                                                />
+                                            ) : null}
+                                            <AppButton
+                                                title="Remove"
+                                                size="sm"
+                                                variant="danger"
+                                                onClick={() => handleDeletePayoutAccount(accountId)}
+                                                accessibilityLabel={`Remove ${account.bank_name || 'bank account'}`}
+                                            />
+                                        </View>
+                                    </View>
+                                );
+                            })
+                        )}
+
+                        {payoutAccounts.length === 0 ? (
+                            <View
+                                className="mt-4 rounded-xl border p-3"
+                                style={{ borderColor: payoutSectionPalette.cardBorder, backgroundColor: payoutSectionPalette.cardBg }}
+                            >
+                                <AppText className="text-sm font-semibold" style={{ color: payoutSectionPalette.title }}>
+                                    Add Bank Account
+                                </AppText>
+                                <View className="mt-3 gap-3">
+                                    <AppInput
+                                        name="payout-country-code"
+                                        label="Country Code"
+                                        value={payoutForm.countryCode}
+                                        onChange={(value) => handlePayoutFormChange('countryCode', value.toUpperCase())}
+                                        placeholder="e.g. US, NG, GH"
+                                        autoCapitalize="characters"
+                                        maxLength={2}
+                                        accessibilityHint="Required 2-letter country code."
+                                    />
+                                    <AppInput
+                                        name="payout-bank-search"
+                                        label="Search Bank"
+                                        value={bankSearchQuery}
+                                        onChange={setBankSearchQuery}
+                                        placeholder="Type bank name (minimum 2 letters)"
+                                        autoCapitalize="words"
+                                        accessibilityHint="Search and select a bank to auto-fill bank name and bank code."
+                                    />
+                                    <AppButton
+                                        title={isBankLookupLoading ? 'Loading Banks...' : 'Load Country Banks'}
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={handleLoadBanksByCountry}
+                                        loading={isBankLookupLoading}
+                                        accessibilityLabel="Load payout banks for selected country"
+                                    />
+                                    {isBankLookupLoading ? (
+                                        <AppText className="text-xs" style={{ color: payoutSectionPalette.text }} accessibilityLiveRegion="polite">
+                                            Searching banks...
+                                        </AppText>
+                                    ) : null}
+                                    {bankLookupNote ? (
+                                        <AppText className="text-xs" style={{ color: payoutSectionPalette.text }} accessibilityLiveRegion="polite">
+                                            {bankLookupNote}
+                                        </AppText>
+                                    ) : null}
+                                    {bankSource ? (
+                                        <AppText className="text-xs" style={{ color: payoutSectionPalette.text }} accessibilityLiveRegion="polite">
+                                            Bank source: {bankSource}
+                                        </AppText>
+                                    ) : null}
+                                    {bankOptions.slice(0, 8).map((bank, idx) => (
+                                        <Pressable
+                                            key={`${bank.bank_code}-${idx}`}
+                                            className="rounded-lg border px-3 py-2"
+                                            style={{ borderColor: payoutSectionPalette.cardBorder, backgroundColor: payoutSectionPalette.sectionBg }}
+                                            onPress={() => handleSelectBankOption(bank)}
+                                            accessibilityRole="button"
+                                            accessibilityLabel={`Use ${bank.bank_name} (${bank.country_code})`}
+                                            accessibilityHint="Fills bank name and bank code."
+                                        >
+                                            <AppText className="text-sm font-semibold" style={{ color: payoutSectionPalette.title }}>
+                                                {bank.bank_name}
+                                            </AppText>
+                                            <AppText className="text-xs" style={{ color: payoutSectionPalette.text }}>
+                                                Code: {bank.bank_code} {bank.source ? `- Source: ${bank.source}` : ''}
+                                            </AppText>
+                                        </Pressable>
+                                    ))}
+                                    <AppInput
+                                        name="payout-bank-name"
+                                        label="Bank Name"
+                                        value={payoutForm.bankName}
+                                        onChange={(value) => handlePayoutFormChange('bankName', value)}
+                                        placeholder="Enter bank name"
+                                        autoCapitalize="words"
+                                    />
+                                    <AppInput
+                                        name="payout-account-number"
+                                        label="Account Number"
+                                        value={payoutForm.accountNumber}
+                                        onChange={(value) => handlePayoutFormChange('accountNumber', value)}
+                                        placeholder="Enter account number"
+                                        keyboardType="number-pad"
+                                        autoCapitalize="none"
+                                    />
+                                    <AppInput
+                                        name="payout-bank-code"
+                                        label="Bank Code"
+                                        value={payoutForm.bankCode}
+                                        onChange={(value) => handlePayoutFormChange('bankCode', value)}
+                                        placeholder="Enter bank code"
+                                        autoCapitalize="characters"
+                                    />
+                                    <AppButton
+                                        title={isSavingPayoutAccount ? 'Saving...' : 'Save Payout Account'}
+                                        icon="save-outline"
+                                        onClick={handleSavePayoutAccount}
+                                        loading={isSavingPayoutAccount}
+                                        fullWidth
+                                        accessibilityLabel="Save payout bank account"
+                                    />
+                                    <AppText className="text-xs" style={{ color: payoutSectionPalette.text }}>
+                                        Account holder name is resolved by backend after verification.
+                                    </AppText>
+                                </View>
+                            </View>
+                        ) : null}
+                    </View>
+
                     {showAutoChargeMethodNotice && (
                         <View
                             className="mb-4 rounded-xl border px-4 py-3"
@@ -620,3 +1091,4 @@ export default function WalletScreen() {
         </Screen>
     );
 }
+

@@ -109,19 +109,44 @@ export default function HomeScreen() {
     const fetchRecentWinners = React.useCallback(async () => {
         try {
             const history = await distributionService.getDistributionHistory();
-            const latestCompleted = history.items.find((item) => item.status === 'completed');
+            const parseCycleRank = (cycleId: string) => {
+                const match = String(cycleId || '').match(/^cyc_(\d{4})_(\d{1,2})$/i);
+                if (!match) return Number.NEGATIVE_INFINITY;
+                const year = Number(match[1]);
+                const number = Number(match[2]);
+                if (Number.isNaN(year) || Number.isNaN(number)) return Number.NEGATIVE_INFINITY;
+                return year * 100 + number;
+            };
 
-            if (!latestCompleted) {
+            const completedCycles = history.items
+                .filter((item) => item.status === 'completed')
+                .sort((a, b) => parseCycleRank(b.cycle_id) - parseCycleRank(a.cycle_id))
+                .slice(0, 6);
+
+            if (completedCycles.length === 0) {
                 setRecentWinners([]);
                 return;
             }
 
-            const details = await distributionService.getDistributionDetail(latestCompleted.cycle_id);
-            const winners = (details.beneficiaries ?? []).map((beneficiary) => ({
-                ...beneficiary,
-                won_at: beneficiary.selected_at,
-            }));
-            setRecentWinners(winners);
+            const cyclesWithWinners = completedCycles.filter((cycle) => (cycle.beneficiaries_count ?? 0) > 0);
+            if (cyclesWithWinners.length === 0) {
+                setRecentWinners([]);
+                return;
+            }
+
+            for (const cycle of cyclesWithWinners) {
+                const details = await distributionService.getDistributionDetail(cycle.cycle_id);
+                const winners = (details.beneficiaries ?? []).map((beneficiary) => ({
+                    ...beneficiary,
+                    won_at: beneficiary.selected_at,
+                }));
+                if (winners.length > 0) {
+                    setRecentWinners(winners);
+                    return;
+                }
+            }
+
+            setRecentWinners([]);
         } catch (error) {
             console.error('[HomeScreen] fetchRecentWinners failed', error);
             setRecentWinners([]);

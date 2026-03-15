@@ -26,15 +26,15 @@ const DashboardQuickActions = () => {
             color: "#0000ff",
             onPress: () => router.push('/(tabs)/wallet'),
         },
-        {
-            id: 'invite',
-            label: 'Invite Friends',
-            icon: 'people-outline',
-            color: "#00ff00",
-            onPress: () => {
-                // TODO: Share functionality
-            },
-        },
+        // {
+        //     id: 'invite',
+        //     label: 'Invite Friends',
+        //     icon: 'people-outline',
+        //     color: "#00ff00",
+        //     onPress: () => {
+        //         // TODO: Share functionality
+        //     },
+        // },
         {
             id: 'help',
             label: 'How It Works',

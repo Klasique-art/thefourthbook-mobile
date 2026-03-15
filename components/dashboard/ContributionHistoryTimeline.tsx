@@ -40,7 +40,7 @@ const ContributionHistoryTimeline = ({ contributions }: ContributionHistoryTimel
                     className="text-lg font-bold"
                     style={{ color: colors.textPrimary }}
                 >
-                    Recent Activity
+                    Recent Transactions
                 </AppText>
                 <TouchableOpacity onPress={() => router.push('/(tabs)/wallet')}>
                     <AppText

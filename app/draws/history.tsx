@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { router } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, View } from 'react-native';
 
 import { Nav, Screen } from '@/components';
 import AppText from '@/components/ui/AppText';
@@ -12,6 +12,12 @@ import { DistributionHistoryItem } from '@/types/distribution.types';
 
 const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
+
+const formatDistributionDate = (value: string) => {
+    const parsed = new Date(value);
+    if (!value || Number.isNaN(parsed.getTime())) return 'Not available';
+    return parsed.toLocaleDateString('en-US');
+};
 
 const statusColorMap: Record<DistributionHistoryItem['status'], string> = {
     active: '#F8B735',
@@ -23,36 +29,45 @@ const DrawsHistoryScreen = () => {
     const colors = useColors();
     const [items, setItems] = React.useState<DistributionHistoryItem[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
+    const [refreshing, setRefreshing] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
+
+    const loadHistory = React.useCallback(async (silent = false) => {
+        if (!silent) {
+            setIsLoading(true);
+        }
+        setError(null);
+        try {
+            const response = await distributionService.getDistributionHistory();
+            setItems(response.items.filter((cycle) => cycle.status === 'completed'));
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Could not load distribution history.');
+        } finally {
+            if (!silent) {
+                setIsLoading(false);
+            }
+        }
+    }, []);
 
     React.useEffect(() => {
         let isMounted = true;
-
-        const loadHistory = async () => {
-            setIsLoading(true);
-            setError(null);
-            try {
-                const response = await distributionService.getDistributionHistory();
-                if (isMounted) {
-                    setItems(response.items);
-                }
-            } catch (err) {
-                if (isMounted) {
-                    setError(err instanceof Error ? err.message : 'Could not load distribution history.');
-                }
-            } finally {
-                if (isMounted) {
-                    setIsLoading(false);
-                }
-            }
-        };
-
-        void loadHistory();
+        if (isMounted) {
+            void loadHistory();
+        }
 
         return () => {
             isMounted = false;
         };
-    }, []);
+    }, [loadHistory]);
+
+    const handleRefresh = React.useCallback(async () => {
+        setRefreshing(true);
+        try {
+            await loadHistory(true);
+        } finally {
+            setRefreshing(false);
+        }
+    }, [loadHistory]);
 
     return (
         <Screen>
@@ -97,6 +112,15 @@ const DrawsHistoryScreen = () => {
                         ) : null
                     }
                     contentContainerStyle={{ paddingBottom: 24 }}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={handleRefresh}
+                            tintColor={colors.accent}
+                            colors={[colors.accent]}
+                            title="Refreshing distributions"
+                        />
+                    }
                     renderItem={({ item: cycle }) => (
                         <Pressable
                             onPress={() => router.push({ pathname: '/draws/beneficiaries', params: { cycleId: cycle.cycle_id } })}
@@ -104,9 +128,14 @@ const DrawsHistoryScreen = () => {
                             style={{ borderColor: colors.border, backgroundColor: colors.backgroundAlt }}
                         >
                             <View className="mb-2 flex-row items-center justify-between">
-                                <AppText className="text-base font-bold" style={{ color: colors.textPrimary }}>
-                                    {cycle.period}
-                                </AppText>
+                                <View>
+                                    <AppText className="text-base font-bold" style={{ color: colors.textPrimary }}>
+                                        {cycle.period}
+                                    </AppText>
+                                    <AppText className="text-xs" style={{ color: colors.textSecondary }}>
+                                        Cycle ID: {cycle.cycle_id}
+                                    </AppText>
+                                </View>
                                 <View
                                     className="rounded-full px-3 py-1"
                                     style={{ backgroundColor: `${statusColorMap[cycle.status]}20` }}
@@ -118,7 +147,7 @@ const DrawsHistoryScreen = () => {
                             </View>
 
                             <AppText className="mb-2 text-sm" style={{ color: colors.textSecondary }}>
-                                Distribution Date: {new Date(cycle.distribution_date).toLocaleDateString('en-US')}
+                                Distribution Date: {formatDistributionDate(cycle.distribution_date)}
                             </AppText>
 
                             <View className="flex-row items-center justify-between">

@@ -40,7 +40,10 @@ export default function DrawsScreen() {
                 setTotalUsers(publicStats.platform_stats.total_users ?? 0);
                 setCompletedDraws(publicStats.platform_stats.total_draws_completed ?? 0);
                 setTotalWinners(publicStats.platform_stats.total_winners ?? 0);
-                const latest = history.items[0];
+                const latest =
+                    history.items.find((item) => item.status === 'completed' && item.beneficiaries_count > 0) ??
+                    history.items.find((item) => item.status === 'completed') ??
+                    null;
                 if (latest) {
                     setLatestCycle({
                         cycle_id: latest.cycle_id,

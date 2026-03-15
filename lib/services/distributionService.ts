@@ -15,10 +15,33 @@ const monthToPeriod = (month: string | null | undefined, fallbackLabel?: string)
 };
 
 const normalizeDrawStatus = (status: string): 'active' | 'completed' | 'processing' => {
-    if (status === 'active' || status === 'completed' || status === 'processing') {
-        return status;
-    }
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'active' || normalized === 'open' || normalized === 'collecting') return 'active';
+    if (normalized === 'completed' || normalized === 'distribution_completed') return 'completed';
+    if (normalized === 'processing' || normalized === 'distribution_processing') return 'processing';
     return 'processing';
+};
+
+const parseSequentialCycleNumber = (cycleId: string): number | null => {
+    const match = String(cycleId || '').match(/^cyc_(\d{6,})$/i);
+    if (!match) return null;
+    const parsed = Number(match[1]);
+    return Number.isNaN(parsed) ? null : parsed;
+};
+
+const cycleFallbackRank = (cycleId: string) => {
+    const sequential = parseSequentialCycleNumber(cycleId);
+    if (sequential !== null) return sequential;
+
+    const normalized = String(cycleId || '');
+    const ymMatch = normalized.match(/^cyc_(\d{4})_(\d{1,2})$/i);
+    if (ymMatch) {
+        const year = Number(ymMatch[1]);
+        const month = Number(ymMatch[2]);
+        if (!Number.isNaN(year) && !Number.isNaN(month)) return year * 100 + month;
+    }
+
+    return Number.NEGATIVE_INFINITY;
 };
 
 export const distributionService = {
@@ -36,38 +59,67 @@ export const distributionService = {
             data: {
                 draws: {
                     draw_id: string;
-                    month: string;
+                    month: string | null;
                     total_pool: string;
                     currency: string;
                     prize_per_winner: string;
                     participants_count: number;
-                    status: 'active' | 'completed' | 'processing';
+                    beneficiaries_count?: number;
+                    status: string;
+                    draw_date?: string | null;
+                    distribution_date?: string | null;
+                    completed_at?: string | null;
+                    updated_at?: string | null;
                 }[];
                 total_count: number;
             };
         }>('/public/draws/stats/');
 
+        const items = (response.data.data.draws ?? []).map((draw) => ({
+            cycle_id: draw.draw_id,
+            period: monthToPeriod(draw.month, draw.draw_id ? `Cycle ${draw.draw_id}` : undefined),
+            status: normalizeDrawStatus(draw.status),
+            total_pool: Number(draw.total_pool),
+            total_participants: draw.participants_count,
+            beneficiaries_count: typeof draw.beneficiaries_count === 'number' ? draw.beneficiaries_count : 0,
+            distribution_date:
+                draw.draw_date ??
+                draw.distribution_date ??
+                draw.completed_at ??
+                draw.updated_at ??
+                '',
+        }));
+
+        const hasStandardSequentialIds = items.some((item) => parseSequentialCycleNumber(item.cycle_id) !== null);
+        const filteredItems = hasStandardSequentialIds
+            ? items.filter((item) => parseSequentialCycleNumber(item.cycle_id) !== null)
+            : items;
+
+        filteredItems.sort((a, b) => {
+            const rankDiff = cycleFallbackRank(b.cycle_id) - cycleFallbackRank(a.cycle_id);
+            if (rankDiff !== 0) return rankDiff;
+
+            const aDateMs = a.distribution_date ? new Date(a.distribution_date).getTime() : NaN;
+            const bDateMs = b.distribution_date ? new Date(b.distribution_date).getTime() : NaN;
+            if (!Number.isNaN(aDateMs) && !Number.isNaN(bDateMs) && aDateMs !== bDateMs) return bDateMs - aDateMs;
+
+            return String(b.cycle_id).localeCompare(String(a.cycle_id));
+        });
+
         return {
-            items: (response.data.data.draws ?? []).map((draw) => ({
-                cycle_id: draw.draw_id,
-                period: monthToPeriod(draw.month, draw.draw_id ? `Cycle ${draw.draw_id}` : undefined),
-                status: draw.status,
-                total_pool: Number(draw.total_pool),
-                total_participants: draw.participants_count,
-                beneficiaries_count: Number(draw.prize_per_winner) > 0 ? Math.round(Number(draw.total_pool) / Number(draw.prize_per_winner)) : 0,
-                distribution_date: draw.month ? `${draw.month}-01T00:00:00Z` : new Date(0).toISOString(),
-            })),
+            items: filteredItems,
         };
     },
 
     async getDistributionDetail(cycleId: string): Promise<DistributionDetailResponse> {
+        const publicDetailPath = `/public/draws/stats/${cycleId}/`;
         const response = await client.get<{
             success: boolean;
             data: {
                 id: string;
                 draw_id: string;
-                month: string;
-                status: 'active' | 'completed' | 'processing';
+                month: string | null;
+                status: string;
                 payout_status: string;
                 total_pool: string;
                 currency: string;
@@ -84,29 +136,71 @@ export const distributionService = {
                     payout_reference: string | null;
                 }[];
             };
-        }>(`/public/draws/stats/${cycleId}/`);
+        }>(publicDetailPath);
 
-        const draw = response.data.data;
-        return {
-            draw_internal_id: draw.id,
-            cycle: {
-                cycle_id: draw.draw_id,
-                period: monthToPeriod(draw.month, draw.draw_id ? `Cycle ${draw.draw_id}` : undefined),
-                status: draw.status,
-                total_pool: Number(draw.total_pool),
-                total_participants: draw.participants_count,
-                beneficiaries_count: draw.beneficiaries_count,
-                distribution_date: draw.draw_date,
-            },
-            beneficiaries: (draw.beneficiaries ?? []).map((beneficiary) => ({
-                winner_id: beneficiary.beneficiary_id,
-                user_identifier: beneficiary.user_id,
-                prize_amount: Number(beneficiary.prize_amount),
-                payout_status: beneficiary.payout_status === 'paid' ? 'completed' : beneficiary.payout_status,
-                cycle_id: draw.draw_id,
-                selected_at: draw.draw_date,
-            })),
+        const mapDrawDetail = (payload: any): DistributionDetailResponse => {
+            const source = payload?.data ?? payload ?? {};
+            const drawId = source.draw_id ?? source.cycle_id ?? cycleId;
+            const rawBeneficiaries = Array.isArray(source.beneficiaries) ? source.beneficiaries : [];
+
+            const beneficiaries = rawBeneficiaries
+                .filter((beneficiary: any) => beneficiary?.is_winner !== false)
+                .map((beneficiary: any, idx: number) => {
+                    const rawStatus = String(beneficiary?.payout_status ?? 'pending').toLowerCase();
+                    const normalizedStatus =
+                        rawStatus === 'paid' ? 'completed' : (rawStatus as 'pending' | 'processing' | 'completed' | 'failed');
+                    return {
+                        winner_id:
+                            beneficiary?.beneficiary_id ??
+                            beneficiary?.winner_id ??
+                            beneficiary?.id ??
+                            `${drawId}_winner_${idx}`,
+                        user_identifier:
+                            beneficiary?.user_id ??
+                            beneficiary?.user_identifier ??
+                            beneficiary?.account_id ??
+                            'unknown_user',
+                        prize_amount: Number(beneficiary?.prize_amount ?? source?.prize_per_winner ?? 0),
+                        payout_status: normalizedStatus,
+                        cycle_id: drawId,
+                        selected_at:
+                            beneficiary?.selected_at ??
+                            source?.draw_date ??
+                            source?.completed_at ??
+                            source?.updated_at ??
+                            new Date(0).toISOString(),
+                    };
+                });
+
+            return {
+                draw_internal_id: source.id ?? source.draw_internal_id ?? drawId,
+                cycle: {
+                    cycle_id: drawId,
+                    period: monthToPeriod(source.month, drawId ? `Cycle ${drawId}` : undefined),
+                    status: normalizeDrawStatus(source.status ?? source.distribution_state ?? 'processing'),
+                    total_pool: Number(source.total_pool ?? 0),
+                    total_participants: Number(source.participants_count ?? source.total_participants ?? 0),
+                    beneficiaries_count:
+                        Number(source.beneficiaries_count ?? source.number_of_winners ?? beneficiaries.length) || 0,
+                    distribution_date:
+                        source.draw_date ?? source.distribution_date ?? source.completed_at ?? new Date(0).toISOString(),
+                },
+                beneficiaries,
+            };
         };
+
+        const publicDetail = mapDrawDetail(response.data?.data);
+        if (publicDetail.beneficiaries.length > 0) return publicDetail;
+        if ((publicDetail.cycle.beneficiaries_count ?? 0) <= 0) return publicDetail;
+
+        try {
+            const lotteryPath = `/lottery/draws/${encodeURIComponent(String(cycleId))}/`;
+            const lotteryResponse = await client.get(lotteryPath);
+            const lotteryDetail = mapDrawDetail(lotteryResponse.data?.data ?? lotteryResponse.data);
+            return lotteryDetail;
+        } catch {
+            return publicDetail;
+        }
     },
 
     async getMySelectionStatus(): Promise<MySelectionStatusResponse> {
