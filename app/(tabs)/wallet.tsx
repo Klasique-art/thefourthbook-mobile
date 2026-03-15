@@ -163,10 +163,6 @@ export default function WalletScreen() {
             chosen = TIMEZONE_TO_SUPPORTED_CURRENCY[timezone];
         }
 
-        console.log(
-            `[Wallet] currency detection :: locale_currency=${detectedCurrency ?? 'n/a'}, region=${region ?? 'n/a'}, timezone=${timezone ?? 'n/a'}, chosen=${chosen}`
-        );
-
         setCheckoutCurrency(chosen);
     }, []);
 
