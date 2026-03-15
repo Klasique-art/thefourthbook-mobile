@@ -4,9 +4,10 @@ import { getCalendars, getLocales } from 'expo-localization';
 import { useFocusEffect } from '@react-navigation/native';
 import * as WebBrowser from 'expo-web-browser';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
 import { Screen } from '@/components';
+import AppText from '@/components/ui/AppText';
 import StatusModal from '@/components/ui/StatusModal';
 import {
     AutoRenewalToggle,
@@ -16,12 +17,14 @@ import {
 } from '@/components/wallet';
 import { Contribution, PaymentMethod } from '@/data/contributions.dummy';
 import { PAYMENT_CALLBACK_URL } from '@/config/settings';
+import { useTheme } from '@/context/ThemeContext';
+import { drawService } from '@/lib/services/drawService';
 import { paymentService } from '@/lib/services/paymentService';
-import { thresholdGameService } from '@/lib/services/thresholdGameService';
 import { ApiPaymentMethod, PaymentHistoryItem } from '@/types/payment.types';
-import { DistributionState } from '@/types/threshold-game.types';
 
 const PENDING_PAYMENT_REFERENCE_KEY = 'thefourthbook_pending_payment_reference';
+const LAST_VERIFIED_PAYMENT_CYCLE_KEY = 'thefourthbook_last_verified_payment_cycle_id';
+const WALLET_REFRESH_INTERVAL_MS = 10000;
 const SUPPORTED_CHECKOUT_CURRENCIES = ['GHS', 'KES', 'NGN', 'USD', 'XOF', 'ZAR'] as const;
 const DEFAULT_CHECKOUT_CURRENCY: (typeof SUPPORTED_CHECKOUT_CURRENCIES)[number] = 'USD';
 
@@ -82,17 +85,24 @@ const getErrorMessage = (error: any, fallback: string) => {
 };
 
 export default function WalletScreen() {
+    const { theme } = useTheme();
     const [isAutoRenewalEnabled, setIsAutoRenewalEnabled] = useState(false);
     const [methods, setMethods] = useState<PaymentMethod[]>([]);
     const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
     const [hasPaidCurrentMonth, setHasPaidCurrentMonth] = useState(false);
+    const [paidOverrideUntil, setPaidOverrideUntil] = useState<number>(0);
+    const [paidOverrideCycleId, setPaidOverrideCycleId] = useState<string | null>(null);
     const [nextDueDate, setNextDueDate] = useState<string>(new Date().toISOString());
     const [transactions, setTransactions] = useState<Contribution[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isAutoRenewUpdating, setIsAutoRenewUpdating] = useState(false);
+    const [currentCycleId, setCurrentCycleId] = useState<string | null>(null);
     const [canPayNow, setCanPayNow] = useState(true);
     const [payDisabledReason, setPayDisabledReason] = useState<string | null>(null);
     const [checkoutCurrency, setCheckoutCurrency] = useState<(typeof SUPPORTED_CHECKOUT_CURRENCIES)[number]>(DEFAULT_CHECKOUT_CURRENCY);
     const [checkoutQuoteLabel, setCheckoutQuoteLabel] = useState<string | null>(null);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
     const [statusModal, setStatusModal] = useState<{
         visible: boolean;
         title: string;
@@ -130,24 +140,77 @@ export default function WalletScreen() {
         setCheckoutCurrency(chosen);
     }, []);
 
-    const stateToReason = (state: DistributionState): string | null => {
-        if (state === 'collecting') return null;
-        if (state === 'threshold_met_game_pending' || state === 'threshold_met_game_open' || state === 'threshold_met_game_closed') {
+    const drawStatusToReason = (status: string): string | null => {
+        const normalized = String(status || '').toLowerCase();
+
+        if (normalized === 'open' || normalized === 'collecting') return null;
+        if (
+            normalized === 'threshold_met_game_pending' ||
+            normalized === 'threshold_met_game_open' ||
+            normalized === 'threshold_met_game_closed' ||
+            normalized === 'closed'
+        ) {
             return 'Contributions are closed. Cycle target has been reached and threshold game/distribution steps are in progress.';
         }
-        if (state === 'distribution_processing') {
+        if (normalized === 'drawing' || normalized === 'distribution_processing') {
             return 'Contributions are paused while distribution is being processed.';
         }
-        if (state === 'distribution_completed') {
+        if (normalized === 'completed' || normalized === 'distribution_completed') {
             return 'This cycle is completed. Contributions will reopen for the next cycle.';
         }
-        return 'Contributions are currently unavailable for this cycle.';
+        if (normalized === 'cancelled') {
+            return 'Contributions are currently unavailable for this cycle.';
+        }
+
+        return 'Could not verify if contributions are open. Please try again shortly.';
+    };
+
+    const formatDateTimeLabel = (value: string | null): string | null => {
+        if (!value) return null;
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return null;
+        return parsed.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        });
     };
 
     const paymentStatus: 'paid' | 'unpaid' | 'processing' = useMemo(() => {
         if (isProcessing) return 'processing';
-        return hasPaidCurrentMonth ? 'paid' : 'unpaid';
-    }, [hasPaidCurrentMonth, isProcessing]);
+        const hasPaidEffective =
+            hasPaidCurrentMonth ||
+            (paidOverrideUntil > Date.now() && Boolean(currentCycleId) && paidOverrideCycleId === currentCycleId);
+        return hasPaidEffective ? 'paid' : 'unpaid';
+    }, [currentCycleId, hasPaidCurrentMonth, isProcessing, paidOverrideCycleId, paidOverrideUntil]);
+
+    const dueLabelOverride = useMemo(() => {
+        if (!isAutoRenewalEnabled) return null;
+        return paymentStatus === 'paid' ? 'At next cycle end' : 'At current cycle end';
+    }, [isAutoRenewalEnabled, paymentStatus]);
+
+    const selectedMethod = useMemo(
+        () => methods.find((method) => method.id === selectedMethodId) ?? null,
+        [methods, selectedMethodId]
+    );
+    const isSelectedMethodCard = selectedMethod?.type === 'card';
+    const showAutoChargeMethodNotice = isAutoRenewalEnabled;
+    const autoChargeNoticeMessage = isSelectedMethodCard
+        ? 'Auto-contribute can auto-charge with your selected card method.'
+        : 'Auto-contribute does not auto-charge mobile money or bank transfer methods. Use a card method for automatic charging.';
+    const autoChargeNoticePalette = useMemo(() => {
+        if (isSelectedMethodCard) {
+            return theme === 'dark'
+                ? { border: '#4ADE80AA', bg: '#14532D66', text: '#86EFAC' }
+                : { border: '#16653499', bg: '#DCFCE766', text: '#14532D' };
+        }
+        return theme === 'dark'
+            ? { border: '#FACC15AA', bg: '#713F1266', text: '#FDE68A' }
+            : { border: '#92400E99', bg: '#FEF3C766', text: '#78350F' };
+    }, [isSelectedMethodCard, theme]);
+
+    const lastUpdatedLabel = useMemo(() => formatDateTimeLabel(lastSyncedAt), [lastSyncedAt]);
 
     const openStatusModal = (title: string, message: string, variant: 'success' | 'error' | 'info') => {
         setStatusModal({ visible: true, title, message, variant });
@@ -214,20 +277,38 @@ export default function WalletScreen() {
         };
     };
 
+    const isSettledPaymentStatus = (status: string | null | undefined) => {
+        const normalized = String(status || '').toLowerCase();
+        return normalized === 'success' || normalized === 'completed' || normalized === 'paid';
+    };
+
     const loadWalletData = useCallback(async () => {
         try {
-            const [status, apiMethods, history, cycle] = await Promise.all([
+            const [status, apiMethods, history, currentDraw] = await Promise.all([
                 paymentService.getCurrentMonthStatus(),
                 paymentService.getPaymentMethods(),
                 paymentService.getPaymentHistory(),
-                thresholdGameService.getCurrentCycle(),
+                drawService.getCurrentDraw(),
             ]);
 
             const mappedMethods = apiMethods.map(toWalletMethod);
             setMethods(mappedMethods);
             setSelectedMethodId(mappedMethods.find((m) => m.is_default)?.id ?? mappedMethods[0]?.id ?? null);
+            setCurrentCycleId(currentDraw?.draw_id ?? null);
 
-            setHasPaidCurrentMonth(Boolean(status.has_paid));
+            const hasPaidMatchingCycle = history.some(
+                (payment) => isSettledPaymentStatus(payment.status) && payment.month === status.month
+            );
+
+            const hasPaidResolved = Boolean(status.has_paid || hasPaidMatchingCycle);
+            setHasPaidCurrentMonth(hasPaidResolved);
+            if (hasPaidResolved) {
+                setPaidOverrideUntil(0);
+                setPaidOverrideCycleId(null);
+            } else if (paidOverrideCycleId && paidOverrideCycleId !== currentDraw?.draw_id) {
+                setPaidOverrideUntil(0);
+                setPaidOverrideCycleId(null);
+            }
             setIsAutoRenewalEnabled(Boolean(status.auto_renew_enabled));
 
             const resolvedDueDate =
@@ -236,7 +317,10 @@ export default function WalletScreen() {
             setNextDueDate(resolvedDueDate);
 
             setTransactions(history.map(toContribution).slice(0, 20));
-            const reason = stateToReason(cycle.distribution_state);
+            console.log(
+                `[cycle-payment-check][wallet-load] cycle_id=${currentDraw?.draw_id ?? 'unknown'} has_paid=${String(hasPaidResolved)} raw_has_paid=${String(status.has_paid)}`
+            );
+            const reason = drawStatusToReason(currentDraw.status);
             setCanPayNow(!reason);
             setPayDisabledReason(reason);
         } catch (error: any) {
@@ -244,6 +328,8 @@ export default function WalletScreen() {
             // Fail-safe to avoid payment loopholes when cycle state is unknown.
             setCanPayNow(false);
             setPayDisabledReason('Could not verify if contributions are open. Please try again shortly.');
+        } finally {
+            setLastSyncedAt(new Date().toISOString());
         }
     }, []);
 
@@ -258,6 +344,13 @@ export default function WalletScreen() {
         try {
             await paymentService.verifyPayment(pendingReference);
             await AsyncStorage.removeItem(PENDING_PAYMENT_REFERENCE_KEY);
+            setHasPaidCurrentMonth(true);
+            setPaidOverrideUntil(Date.now() + 30 * 60 * 1000);
+            const draw = await drawService.getCurrentDraw();
+            setPaidOverrideCycleId(draw?.draw_id ?? null);
+            if (draw?.draw_id) {
+                await AsyncStorage.setItem(LAST_VERIFIED_PAYMENT_CYCLE_KEY, draw.draw_id);
+            }
             await loadWalletData();
             openStatusModal('Success', 'Your contribution was confirmed after returning to the app.', 'success');
         } catch {
@@ -267,9 +360,25 @@ export default function WalletScreen() {
 
     useFocusEffect(
         useCallback(() => {
+            void loadWalletData();
             void verifyPendingPaymentIfAny();
-        }, [verifyPendingPaymentIfAny])
+
+            const poller = setInterval(() => {
+                void loadWalletData();
+            }, WALLET_REFRESH_INTERVAL_MS);
+
+            return () => clearInterval(poller);
+        }, [loadWalletData, verifyPendingPaymentIfAny])
     );
+
+    const handleRefreshWallet = useCallback(async () => {
+        setIsRefreshing(true);
+        try {
+            await loadWalletData();
+        } finally {
+            setIsRefreshing(false);
+        }
+    }, [loadWalletData]);
 
     const handlePayNow = async () => {
         if (!canPayNow) {
@@ -333,6 +442,13 @@ export default function WalletScreen() {
             const tryVerify = async () => {
                 await paymentService.verifyPayment(initialized.reference);
                 await AsyncStorage.removeItem(PENDING_PAYMENT_REFERENCE_KEY);
+                setHasPaidCurrentMonth(true);
+                setPaidOverrideUntil(Date.now() + 30 * 60 * 1000);
+                const draw = await drawService.getCurrentDraw();
+                setPaidOverrideCycleId(draw?.draw_id ?? null);
+                if (draw?.draw_id) {
+                    await AsyncStorage.setItem(LAST_VERIFIED_PAYMENT_CYCLE_KEY, draw.draw_id);
+                }
                 await loadWalletData();
                 openStatusModal('Success', 'Your contribution for this month has been received!', 'success');
             };
@@ -370,15 +486,25 @@ export default function WalletScreen() {
     };
 
     const handleToggleAutoRenewal = async (value: boolean) => {
+        if (isAutoRenewUpdating) return;
+        setIsAutoRenewUpdating(true);
         try {
             const updated = await paymentService.updateAutoRenew({ auto_renew: value });
-            setIsAutoRenewalEnabled(updated.auto_renew);
+            setIsAutoRenewalEnabled(Boolean(updated.auto_renew));
+            await loadWalletData();
+            openStatusModal(
+                'Auto-Contribute Updated',
+                `Auto-contribute is now ${updated.auto_renew ? 'enabled' : 'disabled'}.`,
+                'success'
+            );
         } catch (error: any) {
             openStatusModal(
                 'Auto-Renew Failed',
                 getErrorMessage(error, 'Could not update auto-renew preference.'),
                 'error'
             );
+        } finally {
+            setIsAutoRenewUpdating(false);
         }
     };
 
@@ -401,12 +527,42 @@ export default function WalletScreen() {
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingBottom: 100 }}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={isRefreshing}
+                        onRefresh={handleRefreshWallet}
+                        tintColor="#0ea5e9"
+                        colors={['#0ea5e9']}
+                        title="Refreshing wallet"
+                    />
+                }
             >
                 <View className="pt-2">
+                    <View className="mb-2 flex-row items-center justify-between px-1">
+                        <AppText
+                            className="text-xs"
+                            accessibilityLiveRegion="polite"
+                            style={{ opacity: 0.75 }}
+                        >
+                            {lastUpdatedLabel ? `Last updated: ${lastUpdatedLabel}` : 'Checking wallet status...'}
+                        </AppText>
+                        <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Refresh wallet data"
+                            onPress={handleRefreshWallet}
+                            disabled={isRefreshing}
+                        >
+                            <AppText className="text-xs font-semibold" style={{ opacity: isRefreshing ? 0.6 : 1 }}>
+                                {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                            </AppText>
+                        </Pressable>
+                    </View>
+
                     <PaymentStatusCard
                         status={paymentStatus}
                         amount={currentMonthAmount}
                         nextDueDate={nextDueDate}
+                        dueLabelOverride={dueLabelOverride}
                         onPayPress={handlePayNow}
                         isProcessing={isProcessing}
                         canPayNow={canPayNow}
@@ -422,8 +578,29 @@ export default function WalletScreen() {
                         onSelectMethod={handleSelectMethod}
                     />
 
+                    {showAutoChargeMethodNotice && (
+                        <View
+                            className="mb-4 rounded-xl border px-4 py-3"
+                            style={{
+                                borderColor: autoChargeNoticePalette.border,
+                                backgroundColor: autoChargeNoticePalette.bg,
+                            }}
+                            accessibilityRole="alert"
+                            accessibilityLiveRegion="polite"
+                        >
+                            <AppText className="text-sm font-semibold" style={{ color: autoChargeNoticePalette.text }}>
+                                Auto-Charge Method Check
+                            </AppText>
+                            <AppText className="mt-1 text-xs" style={{ color: autoChargeNoticePalette.text }}>
+                                {autoChargeNoticeMessage}
+                            </AppText>
+                        </View>
+                    )}
+
                     <AutoRenewalToggle
                         isEnabled={isAutoRenewalEnabled}
+                        disabled={isProcessing}
+                        isUpdating={isAutoRenewUpdating}
                         onToggle={handleToggleAutoRenewal}
                     />
 

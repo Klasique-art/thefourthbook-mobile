@@ -7,9 +7,11 @@ import { Screen } from '@/components';
 import AppButton from '@/components/ui/AppButton';
 import AppText from '@/components/ui/AppText';
 import { useColors } from '@/config';
+import { drawService } from '@/lib/services/drawService';
 import { paymentService } from '@/lib/services/paymentService';
 
 const PENDING_PAYMENT_REFERENCE_KEY = 'thefourthbook_pending_payment_reference';
+const LAST_VERIFIED_PAYMENT_CYCLE_KEY = 'thefourthbook_last_verified_payment_cycle_id';
 
 export default function PaymentCallbackScreen() {
     const colors = useColors();
@@ -35,6 +37,10 @@ export default function PaymentCallbackScreen() {
 
                 await paymentService.verifyPayment(reference);
                 await AsyncStorage.removeItem(PENDING_PAYMENT_REFERENCE_KEY);
+                const draw = await drawService.getCurrentDraw();
+                if (draw?.draw_id) {
+                    await AsyncStorage.setItem(LAST_VERIFIED_PAYMENT_CYCLE_KEY, draw.draw_id);
+                }
 
                 if (!mounted) return;
                 setSuccess(true);

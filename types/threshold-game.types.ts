@@ -10,11 +10,19 @@ export type DistributionGameStatus = 'draft' | 'scheduled' | 'open' | 'closed';
 
 export interface DistributionCycleCurrentResponse {
     cycle_id: string;
-    period_label: string;
+    cycle_number?: number | null;
+    period_label: string | null;
     threshold_amount: number;
     total_pool: number;
     total_participants: number;
     distribution_state: DistributionState;
+    server_time?: string;
+    state_updated_at?: string | null;
+    expected_next_transition_at?: string | null;
+    rollover_in_progress?: boolean;
+    next_cycle_id?: string | null;
+    next_cycle_month?: string | null;
+    next_cycle_starts_at?: string | null;
     game: {
         exists: boolean;
         game_id: string | null;

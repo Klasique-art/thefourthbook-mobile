@@ -12,10 +12,11 @@ interface CurrentCycleBannerProps {
     currentPool: number;
     threshold: number;
     beneficiariesCount: number;
+    distributionState?: string;
     onPlayGame?: () => void;
 }
 
-const CurrentCycleBanner = ({ currentPool, threshold, beneficiariesCount, onPlayGame }: CurrentCycleBannerProps) => {
+const CurrentCycleBanner = ({ currentPool, threshold, beneficiariesCount, distributionState, onPlayGame }: CurrentCycleBannerProps) => {
     const colors = useColors();
 
     return (
@@ -49,6 +50,7 @@ const CurrentCycleBanner = ({ currentPool, threshold, beneficiariesCount, onPlay
                     currentPool={currentPool}
                     threshold={threshold}
                     beneficiariesCount={beneficiariesCount}
+                    distributionState={distributionState}
                     onPlayGame={onPlayGame}
                 />
             </View>

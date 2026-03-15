@@ -7,10 +7,12 @@ import { useColors } from '@/config';
 import AppText from '@/components/ui/AppText';
 interface AutoRenewalToggleProps {
     isEnabled: boolean;
+    disabled?: boolean;
+    isUpdating?: boolean;
     onToggle: (value: boolean) => void;
 }
 
-const AutoRenewalToggle = ({ isEnabled, onToggle }: AutoRenewalToggleProps) => {
+const AutoRenewalToggle = ({ isEnabled, disabled = false, isUpdating = false, onToggle }: AutoRenewalToggleProps) => {
     const colors = useColors();
 
     return (
@@ -32,7 +34,7 @@ const AutoRenewalToggle = ({ isEnabled, onToggle }: AutoRenewalToggleProps) => {
                     </AppText>
                 </View>
                 <AppText style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 18 }}>
-                    Automatically contribute $20 on the 1st of each month to never miss a cycle.
+                    Automatically contribute $20 when a cycle closes so you never miss eligibility.
                 </AppText>
             </View>
             <Switch
@@ -41,6 +43,9 @@ const AutoRenewalToggle = ({ isEnabled, onToggle }: AutoRenewalToggleProps) => {
                 ios_backgroundColor="#3e3e3e"
                 onValueChange={onToggle}
                 value={isEnabled}
+                disabled={disabled || isUpdating}
+                accessibilityLabel={isUpdating ? 'Updating auto-contribute setting' : 'Toggle auto-contribute'}
+                accessibilityHint="Turns automatic cycle contribution on or off"
             />
         </View>
     );

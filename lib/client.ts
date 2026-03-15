@@ -141,6 +141,19 @@ const client = axios.create({
     timeout: 15000,
 });
 
+const toResolvedRequestUrl = (config?: AxiosRequestConfig): string | undefined => {
+    if (!config) return undefined;
+    try {
+        return client.getUri(config);
+    } catch {
+        const base = config.baseURL ?? API_BASE_URL;
+        const path = config.url ?? '';
+        if (!path) return base;
+        if (/^https?:\/\//i.test(path)) return path;
+        return `${String(base).replace(/\/+$/, '')}/${String(path).replace(/^\/+/, '')}`;
+    }
+};
+
 client.interceptors.request.use(async (config) => {
     try {
         const storedToken = await authStorage.getAccessToken();
@@ -201,10 +214,15 @@ client.interceptors.response.use(
 
         const status = error?.response?.status;
         const message = toReadableError(error);
-        console.log(`[client] request failed (${error?.config?.method?.toUpperCase()} ${error?.config?.url}): ${message}`);
+        const fullUrl = toResolvedRequestUrl(error?.config);
+        console.log(
+            `[client] request failed (${error?.config?.method?.toUpperCase()} ${fullUrl ?? error?.config?.url}): ${message}`
+        );
         if (status >= 500 || !status) {
             console.log('[client] request failed debug', {
+                full_url: fullUrl,
                 url: error?.config?.url,
+                base_url: error?.config?.baseURL,
                 method: error?.config?.method,
                 message: error?.message,
                 status,

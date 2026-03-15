@@ -11,17 +11,30 @@ interface NextDrawCountdownProps {
     currentPool: number;
     threshold: number;
     beneficiariesCount: number;
+    distributionState?: string;
     onPlayGame?: () => void;
+    onSimulateThreshold?: () => Promise<void> | void;
 }
 
-const NextDrawCountdown = ({ currentPool, threshold, beneficiariesCount, onPlayGame }: NextDrawCountdownProps) => {
+const NextDrawCountdown = ({
+    currentPool,
+    threshold,
+    beneficiariesCount,
+    distributionState,
+    onPlayGame,
+    onSimulateThreshold,
+}: NextDrawCountdownProps) => {
     const colors = useColors();
     const [simulatedPool, setSimulatedPool] = React.useState(currentPool);
     const [isTestMode, setIsTestMode] = React.useState(false);
+    const [isSimulating, setIsSimulating] = React.useState(false);
+    const normalizedState = String(distributionState || '').toLowerCase();
     const progressPercent = Math.min((simulatedPool / threshold) * 100, 100);
     const remaining = Math.max(threshold - simulatedPool, 0);
     const prizePerBeneficiary = threshold / beneficiariesCount;
-    const isThresholdMet = simulatedPool >= threshold;
+    const isCycleCollecting = normalizedState === 'collecting' || normalizedState === 'open' || normalizedState.length === 0;
+    const isThresholdMet = isCycleCollecting ? simulatedPool >= threshold : true;
+    const isGameOpen = normalizedState === 'threshold_met_game_open' || isTestMode;
 
     const fillAnim = React.useRef(new Animated.Value(progressPercent)).current;
     const pulseAnim = React.useRef(new Animated.Value(1)).current;
@@ -66,7 +79,16 @@ const NextDrawCountdown = ({ currentPool, threshold, beneficiariesCount, onPlayG
         return () => loop.stop();
     }, [isThresholdMet, pulseAnim]);
 
-    const handleSimulateThreshold = () => {
+    const handleSimulateThreshold = async () => {
+        if (onSimulateThreshold) {
+            setIsSimulating(true);
+            try {
+                await onSimulateThreshold();
+            } finally {
+                setIsSimulating(false);
+            }
+            return;
+        }
         setIsTestMode(true);
         setSimulatedPool(threshold);
     };
@@ -107,22 +129,31 @@ const NextDrawCountdown = ({ currentPool, threshold, beneficiariesCount, onPlayG
                     <View className="flex-row items-center justify-between">
                         <View className="mr-3 flex-1">
                             <AppText className="text-lg font-bold" color={colors.white}>
-                                Threshold Met
+                                {isGameOpen ? 'Threshold Met' : 'Cycle Locked'}
                             </AppText>
                             <AppText className="text-xs mt-1" color={colors.white}>
-                                Play this game to get higher chance of winning the next distribution.
+                                {isGameOpen
+                                    ? 'Play this game to get higher chance of winning the next distribution.'
+                                    : 'Threshold phase is active. Waiting for the next backend state transition.'}
                             </AppText>
+                            {isTestMode && (
+                                <AppText className="text-xs mt-1" color={colors.white}>
+                                    Test mode override is active.
+                                </AppText>
+                            )}
                         </View>
                         <Ionicons name="trophy" size={24} color={colors.white} />
                     </View>
 
-                    <AppButton
-                        title="Play Game"
-                        icon="game-controller"
-                        onClick={onPlayGame}
-                        fullWidth
-                        style={{ marginTop: 12, backgroundColor: colors.primary }}
-                    />
+                    {isGameOpen && (
+                        <AppButton
+                            title="Play Game"
+                            icon="game-controller"
+                            onClick={onPlayGame}
+                            fullWidth
+                            style={{ marginTop: 12, backgroundColor: colors.primary }}
+                        />
+                    )}
                     {isTestMode && (
                         <AppButton
                             title="Back to live pool"
@@ -185,17 +216,17 @@ const NextDrawCountdown = ({ currentPool, threshold, beneficiariesCount, onPlayG
                         </AppText>
                     </View>
 
-                    {/*
                     <AppButton
-                        title="Test: hit $1M now"
+                        title={isSimulating ? 'Simulating threshold...' : 'Test: hit $1M now'}
                         variant="outline"
                         size="sm"
                         icon="flash"
                         onClick={handleSimulateThreshold}
+                        loading={isSimulating}
+                        disabled={isSimulating}
                         fullWidth
                         style={{ marginTop: 12, borderColor: colors.white }}
                     />
-                    */}
                     {isTestMode && (
                         <AppButton
                             title="Back to live pool"

@@ -6,9 +6,11 @@ import {
     PublicStatisticsResponse,
 } from '@/types/distribution.types';
 
-const monthToPeriod = (month: string) => {
+const monthToPeriod = (month: string | null | undefined, fallbackLabel?: string) => {
+    if (!month) return fallbackLabel ?? 'Unknown cycle';
     const [year, monthNum] = month.split('-');
     const date = new Date(Number(year), Number(monthNum) - 1, 1);
+    if (Number.isNaN(date.getTime())) return fallbackLabel ?? month;
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 };
 
@@ -48,12 +50,12 @@ export const distributionService = {
         return {
             items: (response.data.data.draws ?? []).map((draw) => ({
                 cycle_id: draw.draw_id,
-                period: monthToPeriod(draw.month),
+                period: monthToPeriod(draw.month, draw.draw_id ? `Cycle ${draw.draw_id}` : undefined),
                 status: draw.status,
                 total_pool: Number(draw.total_pool),
                 total_participants: draw.participants_count,
                 beneficiaries_count: Number(draw.prize_per_winner) > 0 ? Math.round(Number(draw.total_pool) / Number(draw.prize_per_winner)) : 0,
-                distribution_date: `${draw.month}-01T00:00:00Z`,
+                distribution_date: draw.month ? `${draw.month}-01T00:00:00Z` : new Date(0).toISOString(),
             })),
         };
     },
@@ -89,7 +91,7 @@ export const distributionService = {
             draw_internal_id: draw.id,
             cycle: {
                 cycle_id: draw.draw_id,
-                period: monthToPeriod(draw.month),
+                period: monthToPeriod(draw.month, draw.draw_id ? `Cycle ${draw.draw_id}` : undefined),
                 status: draw.status,
                 total_pool: Number(draw.total_pool),
                 total_participants: draw.participants_count,
@@ -137,7 +139,7 @@ export const distributionService = {
             .filter((item) => item.is_winner)
             .map((item) => ({
                 cycle_id: item.draw_id,
-                period: monthToPeriod(item.draw_month),
+                period: monthToPeriod(item.draw_month, item.draw_id ? `Cycle ${item.draw_id}` : undefined),
                 distribution_date: item.draw_registration_closes_at,
                 prize_amount: Number(item.prize_amount),
                 payout_status: item.payout_status === 'paid' ? 'completed' : item.payout_status,

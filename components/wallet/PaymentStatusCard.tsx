@@ -10,6 +10,7 @@ interface PaymentStatusCardProps {
     status: 'paid' | 'unpaid' | 'processing';
     amount: number;
     nextDueDate: string;
+    dueLabelOverride?: string | null;
     onPayPress: () => void;
     isProcessing?: boolean;
     canPayNow?: boolean;
@@ -21,6 +22,7 @@ const PaymentStatusCard = ({
     status,
     amount,
     nextDueDate,
+    dueLabelOverride,
     onPayPress,
     isProcessing,
     canPayNow = true,
@@ -63,7 +65,7 @@ const PaymentStatusCard = ({
                 <AppText className="text-4xl font-extrabold mr-1">
                     ${amount.toFixed(2)}
                 </AppText>
-                <AppText className="text-lg mb-1 font-medium">/ month</AppText>
+                <AppText className="text-lg mb-1 font-medium">/ cycle</AppText>
             </View>
             {checkoutQuoteLabel ? (
                 <AppText className="text-xs mb-4" color="#FFFFFF">
@@ -77,7 +79,9 @@ const PaymentStatusCard = ({
                         {isPaid ? "Next Payment Due" : "Payment Due By"}
                     </AppText>
                     <AppText className="font-bold">
-                        {new Date(nextDueDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+                        {dueLabelOverride
+                            ? dueLabelOverride
+                            : new Date(nextDueDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
                     </AppText>
                 </View>
 

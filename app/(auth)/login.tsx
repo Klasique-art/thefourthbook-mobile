@@ -54,6 +54,21 @@ const extractFirstErrorText = (value: unknown): string | null => {
     return null;
 };
 
+const extractApiErrorMessage = (data: any, fallback: string): string => {
+    return (
+        extractFirstErrorText(data?.error?.details?.error?.details?.detail) ||
+        extractFirstErrorText(data?.error?.details?.error?.details) ||
+        extractFirstErrorText(data?.error?.details?.error?.message) ||
+        extractFirstErrorText(data?.error?.details?.message) ||
+        extractFirstErrorText(data?.error?.message) ||
+        extractFirstErrorText(data?.detail) ||
+        extractFirstErrorText(data?.message) ||
+        extractFirstErrorText(data?.error?.details) ||
+        extractFirstErrorText(data?.error) ||
+        fallback
+    );
+};
+
 const LoginFormLoader = () => {
     const { isSubmitting } = useFormikContext<LoginFormValues>();
     return <FormLoader visible={isSubmitting} message="Signing you in..." />;
@@ -126,13 +141,10 @@ const LoginScreen = () => {
             console.log(`[LoginScreen] login failed :: ${JSON.stringify(logPayload)}`);
             console.error(`[LoginScreen] login failed :: ${JSON.stringify(logPayload)}`);
             const data = error?.response?.data;
-            const parsedError =
-                extractFirstErrorText(data?.error?.details) ||
-                extractFirstErrorText(data?.error?.message) ||
-                extractFirstErrorText(data?.detail) ||
-                extractFirstErrorText(data?.message) ||
-                extractFirstErrorText(data?.error) ||
-                'Login failed. Please check your email and password.';
+            const parsedError = extractApiErrorMessage(
+                data,
+                'Login failed. Please check your email and password.'
+            );
 
             setApiError(parsedError);
         }
@@ -176,13 +188,10 @@ const LoginScreen = () => {
                     )}`
                 );
                 const data = error?.response?.data;
-                const parsedError =
-                    extractFirstErrorText(data?.error?.details) ||
-                    extractFirstErrorText(data?.error?.message) ||
-                    extractFirstErrorText(data?.detail) ||
-                    extractFirstErrorText(data?.message) ||
-                    extractFirstErrorText(data?.error) ||
-                    'Google sign-in failed. Please try again.';
+                const parsedError = extractApiErrorMessage(
+                    data,
+                    'Google sign-in failed. Please try again.'
+                );
                 setApiError(parsedError);
             } finally {
                 setIsGoogleLoading(false);

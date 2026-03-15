@@ -49,11 +49,21 @@ const StatusModal = ({
                     <Ionicons name={iconByVariant[variant]} size={34} color={colorByVariant[variant]} />
                 </View>
 
-                <AppText className="mb-2 text-center text-xl font-bold" style={{ color: colors.textPrimary }}>
+                <AppText
+                    className="mb-2 text-center text-xl font-bold"
+                    style={{ color: colors.textPrimary }}
+                    accessibilityRole="header"
+                    accessibilityLiveRegion="assertive"
+                >
                     {title}
                 </AppText>
 
-                <AppText className="mb-5 text-center text-sm leading-6" style={{ color: colors.textSecondary }}>
+                <AppText
+                    className="mb-5 text-center text-sm leading-6"
+                    style={{ color: colors.textSecondary }}
+                    accessibilityRole="alert"
+                    accessibilityLiveRegion="assertive"
+                >
                     {message}
                 </AppText>
 

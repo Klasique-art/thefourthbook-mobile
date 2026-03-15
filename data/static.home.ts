@@ -18,13 +18,13 @@ export const homeQuickActions: QuickAction[] = [
         route: '/wallet',
         color: '#F38218', // accent
     },
-    {
-        id: '3',
-        icon: 'people',
-        label: 'Invite Your Circle',
-        action: 'share',
-        color: '#0f0', // success/green
-    },
+    // {
+    //     id: '3',
+    //     icon: 'people',
+    //     label: 'Invite Your Circle',
+    //     action: 'share',
+    //     color: '#0f0', // success/green
+    // },
     {
         id: '7',
         icon: 'help-circle',

@@ -34,6 +34,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setUser(currentUser);
     }, []);
 
+    const forceLocalLogout = useCallback(async () => {
+        await authStorage.clearTokens();
+        setHasSession(false);
+        setUser(null);
+    }, []);
+
+    const shouldForceLogoutOnAuthFailure = (error: any) => {
+        const status = error?.response?.status;
+        if (status === 401 || status === 403) return true;
+        const message = String(error?.message || '').toLowerCase();
+        return message.includes('network error') || message.includes('unauthorized') || message.includes('forbidden');
+    };
+
     const checkAuth = useCallback(async () => {
         try {
             const [accessToken, refreshToken] = await Promise.all([
@@ -53,20 +66,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 await refreshUser();
             } catch (error: any) {
                 console.error('[AuthContext] checkAuth refreshUser failed', error);
-                const status = error?.response?.status;
-                if (status === 401 || status === 403) {
-                    setHasSession(false);
-                    setUser(null);
+                if (shouldForceLogoutOnAuthFailure(error)) {
+                    await forceLocalLogout();
                 }
             }
         } catch (error) {
             console.error('[AuthContext] checkAuth failed', error);
-            setHasSession(false);
-            setUser(null);
+            await forceLocalLogout();
         } finally {
             setIsLoading(false);
         }
-    }, [refreshUser]);
+    }, [forceLocalLogout, refreshUser]);
 
     useEffect(() => {
         void checkAuth();
@@ -89,8 +99,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
             await refreshUser();
         } catch (error) {
             console.error('[AuthContext] login refreshUser failed', error);
+            await forceLocalLogout();
         }
-    }, [refreshUser]);
+    }, [forceLocalLogout, refreshUser]);
 
     const loginWithGoogle = useCallback(async (idToken: string) => {
         await authService.loginWithGoogle(idToken);
@@ -100,8 +111,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
             await refreshUser();
         } catch (error) {
             console.error('[AuthContext] loginWithGoogle refreshUser failed', error);
+            await forceLocalLogout();
         }
-    }, [refreshUser]);
+    }, [forceLocalLogout, refreshUser]);
 
     const signup = useCallback(async (data: SignupData) => {
         try {

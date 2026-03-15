@@ -1,7 +1,8 @@
 export interface CurrentDraw {
     id: string;
     draw_id: string;
-    month: string;
+    month: string | null;
+    cycle_number?: number | null;
     status: string;
     payout_status: string;
     lottery_type: string;
@@ -16,6 +17,14 @@ export interface CurrentDraw {
     draw_date: string | null;
     registration_closes_at: string | null;
     participants_count: number;
+    distribution_state?: string;
+    server_time?: string;
+    state_updated_at?: string | null;
+    expected_next_transition_at?: string | null;
+    rollover_in_progress?: boolean;
+    next_cycle_id?: string | null;
+    next_cycle_month?: string | null;
+    next_cycle_starts_at?: string | null;
     user_participation: {
         is_participating: boolean;
     };
