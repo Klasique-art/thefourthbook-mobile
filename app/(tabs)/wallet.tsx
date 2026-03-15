@@ -400,9 +400,6 @@ export default function WalletScreen() {
             setNextDueDate(resolvedDueDate);
 
             setTransactions(history.map(toContribution).slice(0, 20));
-            console.log(
-                `[cycle-payment-check][wallet-load] cycle_id=${currentDraw?.draw_id ?? 'unknown'} has_paid=${String(hasPaidResolved)} raw_has_paid=${String(status.has_paid)}`
-            );
             const reason = drawStatusToReason(currentDraw.status);
             setCanPayNow(!reason);
             setPayDisabledReason(reason);
