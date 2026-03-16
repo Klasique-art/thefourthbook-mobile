@@ -258,6 +258,7 @@ export default function WalletScreen() {
     );
 
     const lastUpdatedLabel = useMemo(() => formatDateTimeLabel(lastSyncedAt), [lastSyncedAt]);
+    const hasSelectedBank = Boolean(payoutForm.bankName.trim() && payoutForm.bankCode.trim());
 
     const openStatusModal = (title: string, message: string, variant: 'success' | 'error' | 'info') => {
         setStatusModal({ visible: true, title, message, variant });
@@ -634,21 +635,47 @@ export default function WalletScreen() {
             return;
         }
 
+        const isVerifiedAccount = (account: PayoutAccount | null | undefined) =>
+            String(account?.verification_status || '').toLowerCase() === 'verified';
+        const hasVerifiedAccountInList = (accounts: PayoutAccount[]) =>
+            accounts.some((account) => isVerifiedAccount(account));
+
+        let hasVerifiedPayoutAccount = hasVerifiedAccountInList(payoutAccounts);
+
+        if (!hasVerifiedPayoutAccount) {
+            try {
+                const latestAccounts = await payoutAccountService.getAccounts();
+                if (latestAccounts.length > 0) {
+                    setPayoutAccounts(latestAccounts);
+                    hasVerifiedPayoutAccount = hasVerifiedAccountInList(latestAccounts);
+                }
+            } catch {
+                // Continue with status check below as fallback signal.
+            }
+        }
+
         try {
             const payoutStatus = await payoutAccountService.getStatus();
-            if (!payoutStatus.default_account) {
+            hasVerifiedPayoutAccount =
+                hasVerifiedPayoutAccount ||
+                Boolean(payoutStatus.has_default_verified_account) ||
+                isVerifiedAccount(payoutStatus.default_account);
+        } catch (error: any) {
+            if (!hasVerifiedPayoutAccount) {
                 openStatusModal(
-                    'Set Payout Account First',
-                    'Before paying into a cycle, please add your payout bank account in this Wallet screen.',
-                    'info'
+                    'Payout Account Check',
+                    getErrorMessage(error, 'Could not confirm your payout account setup. Please try again.'),
+                    'error'
                 );
                 return;
             }
-        } catch (error: any) {
+        }
+
+        if (!hasVerifiedPayoutAccount) {
             openStatusModal(
-                'Payout Account Check',
-                getErrorMessage(error, 'Could not confirm your payout account setup. Please try again.'),
-                'error'
+                'Verify Payout Account First',
+                'Before paying into a cycle, please add and verify your payout bank account in this Wallet screen.',
+                'info'
             );
             return;
         }
@@ -960,14 +987,16 @@ export default function WalletScreen() {
                                         autoCapitalize="words"
                                         accessibilityHint="Search and select a bank to auto-fill bank name and bank code."
                                     />
-                                    <AppButton
-                                        title={isBankLookupLoading ? 'Loading Banks...' : 'Load Country Banks'}
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={handleLoadBanksByCountry}
-                                        loading={isBankLookupLoading}
-                                        accessibilityLabel="Load payout banks for selected country"
-                                    />
+                                    {!hasSelectedBank ? (
+                                        <AppButton
+                                            title={isBankLookupLoading ? 'Loading Banks...' : 'Load Country Banks'}
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={handleLoadBanksByCountry}
+                                            loading={isBankLookupLoading}
+                                            accessibilityLabel="Load payout banks for selected country"
+                                        />
+                                    ) : null}
                                     {isBankLookupLoading ? (
                                         <AppText className="text-xs" style={{ color: payoutSectionPalette.text }} accessibilityLiveRegion="polite">
                                             Searching banks...
@@ -1006,8 +1035,11 @@ export default function WalletScreen() {
                                         label="Bank Name"
                                         value={payoutForm.bankName}
                                         onChange={(value) => handlePayoutFormChange('bankName', value)}
-                                        placeholder="Enter bank name"
+                                        placeholder="Auto-filled from selected bank"
+                                        editable={false}
+                                        selectTextOnFocus={false}
                                         autoCapitalize="words"
+                                        accessibilityHint="Read-only. Select a bank above to fill this value."
                                     />
                                     <AppInput
                                         name="payout-account-number"
@@ -1023,8 +1055,11 @@ export default function WalletScreen() {
                                         label="Bank Code"
                                         value={payoutForm.bankCode}
                                         onChange={(value) => handlePayoutFormChange('bankCode', value)}
-                                        placeholder="Enter bank code"
+                                        placeholder="Auto-filled from selected bank"
+                                        editable={false}
+                                        selectTextOnFocus={false}
                                         autoCapitalize="characters"
+                                        accessibilityHint="Read-only. Select a bank above to fill this value."
                                     />
                                     <AppButton
                                         title={isSavingPayoutAccount ? 'Saving...' : 'Save Payout Account'}

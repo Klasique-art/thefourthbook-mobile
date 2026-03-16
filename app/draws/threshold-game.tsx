@@ -197,6 +197,13 @@ const ThresholdGameScreen = () => {
             );
             const cycleAlert = stateToAlert(cycle.distribution_state);
             if (cycleAlert) {
+                console.log(
+                    `[ThresholdDebug][game-screen] cycle_not_open cycle_id=${cycle.cycle_id} state=${cycle.distribution_state} game_exists=${String(
+                        cycle.game?.exists
+                    )} game_id=${String(cycle.game?.game_id ?? 'none')} expected_next_transition_at=${String(
+                        cycle.expected_next_transition_at ?? 'n/a'
+                    )} server_time=${String(cycle.server_time ?? 'n/a')}`
+                );
                 setGame(null);
                 setSelectedOptionId(null);
                 setAlert(cycleAlert);
@@ -211,6 +218,13 @@ const ThresholdGameScreen = () => {
             }
 
             if (!cycle.game.exists || !cycle.game.game_id) {
+                console.log(
+                    `[ThresholdDebug][game-screen] no_active_game cycle_id=${cycle.cycle_id} state=${cycle.distribution_state} game_exists=${String(
+                        cycle.game.exists
+                    )} game_id=${String(cycle.game.game_id ?? 'none')} game_status=${String(
+                        cycle.game.status ?? 'n/a'
+                    )}`
+                );
                 setGame(null);
                 setSelectedOptionId(null);
                 setAlert({ tone: 'info', message: 'No active threshold game found right now.' });
@@ -225,6 +239,11 @@ const ThresholdGameScreen = () => {
             }
 
             const response = await thresholdGameService.getActiveGame(cycle.cycle_id);
+            console.log(
+                `[ThresholdDebug][game-screen] active_game_loaded cycle_id=${cycle.cycle_id} game_id=${response.game_id} status=${response.status} starts_at=${String(
+                    response.starts_at
+                )} ends_at=${String(response.ends_at)}`
+            );
             setGame(response);
 
             const serverNowMs = toTimestamp(cycle.server_time) ?? Date.now();
@@ -286,6 +305,11 @@ const ThresholdGameScreen = () => {
         } catch (err: unknown) {
             const apiError = err as ThresholdGameApiError;
             if (apiError?.status === 404) {
+                console.log(
+                    `[ThresholdDebug][game-screen] cycle_or_game_404 status=404 message=${String(
+                        apiError?.message || 'n/a'
+                    )} data=${JSON.stringify(apiError?.data ?? {})}`
+                );
                 setGame(null);
                 setSelectedOptionId(null);
                 setAlert({ tone: 'info', message: 'No cycle is available yet. Please check again shortly.' });
@@ -294,6 +318,11 @@ const ThresholdGameScreen = () => {
                 setEndsAtLabel(null);
                 countdownAnchorRef.current = null;
             } else {
+                console.log(
+                    `[ThresholdDebug][game-screen] sync_failed status=${String(apiError?.status ?? 'n/a')} message=${String(
+                        apiError?.message || (err instanceof Error ? err.message : 'unknown')
+                    )} data=${JSON.stringify(apiError?.data ?? {})}`
+                );
                 if (
                     apiError?.status === 403 &&
                     String(apiError?.message || '').toLowerCase().includes('not eligible')

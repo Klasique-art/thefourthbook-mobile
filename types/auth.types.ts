@@ -5,7 +5,6 @@ export type SignupRequest = {
     first_name: string;
     last_name: string;
     phone: string;
-    country: string;
     date_of_birth: string;
     agree_to_terms: boolean;
 };

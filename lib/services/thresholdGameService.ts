@@ -64,6 +64,9 @@ const toApiErrorMessage = (error: any): string => {
     if (status === 403 && requestUrl.includes('/admin/testing/cycles/')) {
         return 'You do not have permission to run staging simulation endpoints. Use an admin account/token.';
     }
+    if (status === 404 && requestUrl.includes('/admin/testing/cycles/')) {
+        return 'Testing simulation endpoint is not available on this backend environment (404).';
+    }
     if (status === 403) {
         return 'You are not eligible for this cycle. You need a qualifying contribution/payment in this cycle before you can play the threshold game.';
     }
@@ -77,6 +80,37 @@ const toApiError = (error: any): ThresholdGameApiError => {
     apiError.status = error?.response?.status;
     apiError.data = error?.response?.data;
     return apiError;
+};
+
+const postCycleSimulationWithFallback = async (
+    cycleId: string,
+    suffix: 'simulate-threshold-met' | 'simulate-game-close' | 'simulate-rollover'
+): Promise<DistributionCycleCurrentResponse> => {
+    const encodedId = encodeURIComponent(cycleId);
+    const candidatePaths = [
+        `/admin/testing/cycles/${encodedId}/${suffix}/`,
+        `/distribution/admin/testing/cycles/${encodedId}/${suffix}/`,
+        `/distribution/testing/cycles/${encodedId}/${suffix}/`,
+    ];
+
+    let lastError: any = null;
+    for (const path of candidatePaths) {
+        try {
+            const response = await client.post<
+                Envelope<DistributionCycleCurrentResponse> | DistributionCycleCurrentResponse
+            >(path);
+            return unwrap(response.data);
+        } catch (error: any) {
+            const status = error?.response?.status;
+            if (status === 404) {
+                lastError = error;
+                continue;
+            }
+            throw toApiError(error);
+        }
+    }
+
+    throw toApiError(lastError);
 };
 
 export const thresholdGameService = {
@@ -139,35 +173,14 @@ export const thresholdGameService = {
     },
 
     async simulateThresholdMet(cycleId: string): Promise<DistributionCycleCurrentResponse> {
-        try {
-            const response = await client.post<
-                Envelope<DistributionCycleCurrentResponse> | DistributionCycleCurrentResponse
-            >(`/admin/testing/cycles/${encodeURIComponent(cycleId)}/simulate-threshold-met/`);
-            return unwrap(response.data);
-        } catch (error: any) {
-            throw toApiError(error);
-        }
+        return postCycleSimulationWithFallback(cycleId, 'simulate-threshold-met');
     },
 
     async simulateGameClose(cycleId: string): Promise<DistributionCycleCurrentResponse> {
-        try {
-            const response = await client.post<
-                Envelope<DistributionCycleCurrentResponse> | DistributionCycleCurrentResponse
-            >(`/admin/testing/cycles/${encodeURIComponent(cycleId)}/simulate-game-close/`);
-            return unwrap(response.data);
-        } catch (error: any) {
-            throw toApiError(error);
-        }
+        return postCycleSimulationWithFallback(cycleId, 'simulate-game-close');
     },
 
     async simulateRollover(cycleId: string): Promise<DistributionCycleCurrentResponse> {
-        try {
-            const response = await client.post<
-                Envelope<DistributionCycleCurrentResponse> | DistributionCycleCurrentResponse
-            >(`/admin/testing/cycles/${encodeURIComponent(cycleId)}/simulate-rollover/`);
-            return unwrap(response.data);
-        } catch (error: any) {
-            throw toApiError(error);
-        }
+        return postCycleSimulationWithFallback(cycleId, 'simulate-rollover');
     },
 };

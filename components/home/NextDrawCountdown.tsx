@@ -136,11 +136,6 @@ const NextDrawCountdown = ({
                                     ? 'Play this game to get higher chance of winning the next distribution.'
                                     : 'Threshold phase is active. Waiting for the next backend state transition.'}
                             </AppText>
-                            {isTestMode && (
-                                <AppText className="text-xs mt-1" color={colors.white}>
-                                    Test mode override is active.
-                                </AppText>
-                            )}
                         </View>
                         <Ionicons name="trophy" size={24} color={colors.white} />
                     </View>
@@ -177,11 +172,6 @@ const NextDrawCountdown = ({
                         <AppText className="text-xs mt-1" color={colors.white}>
                             Distribution runs automatically at ${threshold.toLocaleString()}
                         </AppText>
-                        {isTestMode && (
-                            <AppText className="text-xs mt-1" color={colors.white}>
-                                Test mode is active
-                            </AppText>
-                        )}
                     </View>
 
                     <View className="mb-3">
@@ -217,7 +207,7 @@ const NextDrawCountdown = ({
                     </View>
 
                     <AppButton
-                        title={isSimulating ? 'Simulating threshold...' : 'Test: hit $1M now'}
+                        title={isSimulating ? 'Updating threshold...' : 'Update Threshold'}
                         variant="outline"
                         size="sm"
                         icon="flash"

@@ -24,6 +24,7 @@ import SubmitButton from '@/components/form/SubmitButton';
 import ToggleField from '@/components/form/ToggleField';
 import AppText from '@/components/ui/AppText';
 import Screen from '@/components/ui/Screen';
+import StatusModal from '@/components/ui/StatusModal';
 import { useColors } from '@/config/colors';
 import {
     GOOGLE_ANDROID_CLIENT_ID,
@@ -95,6 +96,20 @@ const SignupScreen = () => {
     const [successMessage, setSuccessMessage] = useState('');
     const [keyboardHeight, setKeyboardHeight] = useState(0);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+    const [ageModalVisible, setAgeModalVisible] = useState(false);
+
+    const isAtLeast18 = (dateOfBirth: string) => {
+        const [year, month, day] = dateOfBirth.split('-').map(Number);
+        if (!year || !month || !day) return false;
+
+        const today = new Date();
+        const eighteenYearsAgo = new Date(
+            Date.UTC(today.getUTCFullYear() - 18, today.getUTCMonth(), today.getUTCDate())
+        );
+        const birthDate = new Date(Date.UTC(year, month - 1, day));
+
+        return birthDate <= eighteenYearsAgo;
+    };
 
     const androidPackage = Constants.expoConfig?.android?.package || 'com.thefourthbook.app';
     const googleRedirectUri = AuthSession.makeRedirectUri({
@@ -200,6 +215,11 @@ const SignupScreen = () => {
         values: SignupFormValues,
         { resetForm }: FormikHelpers<SignupFormValues>
     ) => {
+        if (!isAtLeast18(values.date_of_birth)) {
+            setAgeModalVisible(true);
+            return;
+        }
+
         try {
             setApiError('');
             setSuccessMessage('');
@@ -211,7 +231,6 @@ const SignupScreen = () => {
                 first_name: values.first_name.trim(),
                 last_name: values.last_name.trim(),
                 phone: values.phone.trim(),
-                country: values.country.trim(),
                 date_of_birth: values.date_of_birth,
                 agree_to_terms: values.agree_to_terms,
             };
@@ -319,7 +338,6 @@ const SignupScreen = () => {
                                 confirm_password: '',
                                 first_name: '',
                                 last_name: '',
-                                country: '',
                                 date_of_birth: '',
                                 agree_to_terms: false,
                             }}
@@ -364,12 +382,6 @@ const SignupScreen = () => {
                                 label="Phone Number"
                                 type="tel"
                                 placeholder="e.g. +1234567890"
-                                required
-                            />
-                            <AppFormField
-                                name="country"
-                                label="Country"
-                                placeholder="Enter country"
                                 required
                             />
                             <AppFormField
@@ -456,6 +468,13 @@ const SignupScreen = () => {
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>
+            <StatusModal
+                visible={ageModalVisible}
+                title="Age Requirement"
+                message="You must be at least 18 years old to sign up."
+                variant="info"
+                onClose={() => setAgeModalVisible(false)}
+            />
         </Screen>
     );
 };

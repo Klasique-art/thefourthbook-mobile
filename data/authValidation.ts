@@ -12,7 +12,6 @@ export type SignupFormValues = {
     confirm_password: string;
     first_name: string;
     last_name: string;
-    country: string;
     date_of_birth: string;
     agree_to_terms: boolean;
 };
@@ -30,12 +29,6 @@ export const LoginValidationSchema = Yup.object().shape({
         .min(6, 'Password must be at least 6 characters.')
         .required('Password is required.'),
 });
-
-const eighteenYearsAgo = (() => {
-    const date = new Date();
-    date.setFullYear(date.getFullYear() - 18);
-    return date;
-})();
 
 const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/;
 const simplePhoneRegex = /^\+?[1-9]\d{7,14}$/;
@@ -67,12 +60,8 @@ export const SignupValidationSchema = Yup.object().shape({
         .trim()
         .min(2, 'Last name is too short.')
         .required('Last name is required.'),
-    country: Yup.string()
-        .trim()
-        .required('Country is required.'),
     date_of_birth: Yup.date()
         .typeError('Date of birth is required.')
-        .max(eighteenYearsAgo, 'You must be at least 18 years old.')
         .required('Date of birth is required.'),
     agree_to_terms: Yup.boolean()
         .oneOf([true], 'You must agree to the terms and conditions.')
