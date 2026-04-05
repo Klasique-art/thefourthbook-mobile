@@ -1,4 +1,5 @@
 import client from '@/lib/client';
+import { SIMULATION_API_SECRET } from '@/config/settings';
 import {
     DistributionCycleCurrentResponse,
     DistributionGameActiveResponse,
@@ -47,6 +48,7 @@ const toApiErrorMessage = (error: any): string => {
     const status = error?.response?.status;
     const data = error?.response?.data;
     const requestUrl = String(error?.config?.url || '');
+    const errorCode = String(data?.error?.code || '').trim().toUpperCase();
     const detail =
         extractFirstErrorText(data?.error?.details?.error?.details) ||
         extractFirstErrorText(data?.error?.details?.error?.message) ||
@@ -61,6 +63,21 @@ const toApiErrorMessage = (error: any): string => {
 
     if (status === 409) return 'You already submitted an answer for this game.';
     if (status === 422) return 'Game is not open for submissions.';
+    if (errorCode === 'SIMULATION_NOT_ENABLED') {
+        return 'Simulation is not enabled in this backend environment.';
+    }
+    if (errorCode === 'SIMULATION_NOT_ALLOWED') {
+        return 'You are not allowed to run simulation endpoints with this account.';
+    }
+    if (errorCode === 'CYCLE_NOT_FOUND') {
+        return 'Cycle not found. Refresh and try again.';
+    }
+    if (errorCode === 'GAME_CREATION_FAILED') {
+        return 'Simulation could not create a game. Please retry.';
+    }
+    if (errorCode === 'INVALID_SIMULATION_STATE') {
+        return 'Simulation cannot run from the current cycle state yet.';
+    }
     if (status === 403 && requestUrl.includes('/admin/testing/cycles/')) {
         return 'You do not have permission to run staging simulation endpoints. Use an admin account/token.';
     }
@@ -98,7 +115,13 @@ const postCycleSimulationWithFallback = async (
         try {
             const response = await client.post<
                 Envelope<DistributionCycleCurrentResponse> | DistributionCycleCurrentResponse
-            >(path);
+            >(path, undefined, {
+                headers: SIMULATION_API_SECRET
+                    ? {
+                          'X-Simulation-Secret': SIMULATION_API_SECRET,
+                      }
+                    : undefined,
+            });
             return unwrap(response.data);
         } catch (error: any) {
             const status = error?.response?.status;
@@ -113,7 +136,64 @@ const postCycleSimulationWithFallback = async (
     throw toApiError(lastError);
 };
 
+type SimulateGameFlowPayload = {
+    pending_seconds?: number;
+    open_seconds?: number;
+    auto_create_game?: boolean;
+    auto_publish_game?: boolean;
+    auto_close_game?: boolean;
+    auto_rollover?: boolean;
+};
+
+const postSimulateGameFlow = async (
+    cycleId: string,
+    payload: SimulateGameFlowPayload
+): Promise<DistributionCycleCurrentResponse> => {
+    const encodedId = encodeURIComponent(cycleId);
+    const candidatePaths = [
+        `/admin/testing/cycles/${encodedId}/simulate-game-flow/`,
+        `/distribution/admin/testing/cycles/${encodedId}/simulate-game-flow/`,
+        `/distribution/testing/cycles/${encodedId}/simulate-game-flow/`,
+    ];
+
+    let lastError: any = null;
+    for (const path of candidatePaths) {
+        try {
+            const response = await client.post<
+                Envelope<{
+                    cycle_id?: string;
+                }> | {
+                    cycle_id?: string;
+                }
+            >(path, payload, {
+                headers: SIMULATION_API_SECRET
+                    ? {
+                          'X-Simulation-Secret': SIMULATION_API_SECRET,
+                      }
+                    : undefined,
+            });
+
+            const data = unwrap(response.data);
+            const hintedCycleId = String((data as any)?.cycle_id || cycleId);
+            return await thresholdGameService.getCurrentCycleByIdHint(hintedCycleId);
+        } catch (error: any) {
+            const status = error?.response?.status;
+            if (status === 404) {
+                lastError = error;
+                continue;
+            }
+            throw toApiError(error);
+        }
+    }
+
+    throw toApiError(lastError);
+};
+
 export const thresholdGameService = {
+    async getCurrentCycleByIdHint(_cycleIdHint?: string): Promise<DistributionCycleCurrentResponse> {
+        return this.getCurrentCycle();
+    },
+
     async getCurrentCycle(): Promise<DistributionCycleCurrentResponse> {
         try {
             const response = await client.get<Envelope<DistributionCycleCurrentResponse> | DistributionCycleCurrentResponse>(
@@ -182,5 +262,29 @@ export const thresholdGameService = {
 
     async simulateRollover(cycleId: string): Promise<DistributionCycleCurrentResponse> {
         return postCycleSimulationWithFallback(cycleId, 'simulate-rollover');
+    },
+
+    async simulateGameFlow(
+        cycleId: string,
+        payload: SimulateGameFlowPayload = {}
+    ): Promise<DistributionCycleCurrentResponse> {
+        const normalizedPayload: SimulateGameFlowPayload = {
+            pending_seconds: payload.pending_seconds ?? 5,
+            open_seconds: payload.open_seconds ?? 90,
+            auto_create_game: payload.auto_create_game ?? true,
+            auto_publish_game: payload.auto_publish_game ?? true,
+            auto_close_game: payload.auto_close_game ?? true,
+            auto_rollover: payload.auto_rollover ?? true,
+        };
+
+        try {
+            return await postSimulateGameFlow(cycleId, normalizedPayload);
+        } catch (error: any) {
+            const status = error?.status ?? error?.response?.status;
+            if (status === 404) {
+                return await this.simulateThresholdMet(cycleId);
+            }
+            throw error;
+        }
     },
 };

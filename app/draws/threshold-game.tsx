@@ -128,9 +128,18 @@ const ThresholdGameScreen = () => {
     const imageTiltXAnim = React.useRef(new Animated.Value(0)).current;
     const imageTiltYAnim = React.useRef(new Animated.Value(0)).current;
     const imageDepthAnim = React.useRef(new Animated.Value(1)).current;
+    const waitingOrbitAnim = React.useRef(new Animated.Value(0)).current;
+    const waitingOrbitX = React.useRef(new Animated.Value(0)).current;
+    const waitingOrbitY = React.useRef(new Animated.Value(-99)).current;
+    const waitingPulseAnim = React.useRef(new Animated.Value(1)).current;
+    const waitingDotOne = React.useRef(new Animated.Value(0.35)).current;
+    const waitingDotTwo = React.useRef(new Animated.Value(0.35)).current;
+    const waitingDotThree = React.useRef(new Animated.Value(0.35)).current;
     const imageSizeRef = React.useRef({ width: 1, height: 1 });
     const [imageLayoutTick, setImageLayoutTick] = React.useState(0);
     const currentCycleIdRef = React.useRef<string | null>(null);
+    const lastCycleStateRef = React.useRef<string | null>(null);
+    const pendingEnteredAtRef = React.useRef<number | null>(null);
     const hadOpenGameRef = React.useRef(false);
     const postCloseResyncScheduledRef = React.useRef(false);
     const zeroBoundarySyncRef = React.useRef(false);
@@ -138,6 +147,9 @@ const ThresholdGameScreen = () => {
     const hasSubmitted = Boolean(game?.submission.has_submitted || submittedTap);
     const markerTap = hasSubmitted ? submittedTap : selectedTap;
     const isGameOpen = game?.status === 'open';
+    const isPendingSetupState =
+        !game &&
+        Boolean(alert?.message?.toLowerCase().includes('being prepared') || alert?.message?.toLowerCase().includes('waiting for admin'));
     const remainingLabel = remainingMs !== null ? formatRemaining(remainingMs) : null;
     const lastUpdatedLabel = React.useMemo(() => toDateTimeLabel(lastSyncedAt), [lastSyncedAt]);
 
@@ -153,6 +165,14 @@ const ThresholdGameScreen = () => {
             const cycle: DistributionCycleCurrentResponse = await thresholdGameService.getCurrentCycle();
             const previousCycleId = currentCycleIdRef.current;
             currentCycleIdRef.current = cycle.cycle_id;
+            const previousState = lastCycleStateRef.current;
+            lastCycleStateRef.current = cycle.distribution_state;
+
+            if (cycle.distribution_state === 'threshold_met_game_pending') {
+                if (!pendingEnteredAtRef.current) pendingEnteredAtRef.current = Date.now();
+            } else {
+                pendingEnteredAtRef.current = null;
+            }
 
             if (previousCycleId && previousCycleId !== cycle.cycle_id) {
                 postCloseResyncScheduledRef.current = false;
@@ -384,6 +404,99 @@ const ThresholdGameScreen = () => {
     );
 
     React.useEffect(() => {
+        if (!isPendingSetupState) return;
+        waitingOrbitAnim.setValue(0);
+        waitingOrbitX.setValue(0);
+        waitingOrbitY.setValue(-99);
+        waitingPulseAnim.setValue(1);
+        waitingDotOne.setValue(0.35);
+        waitingDotTwo.setValue(0.35);
+        waitingDotThree.setValue(0.35);
+        const orbit = Animated.loop(
+            Animated.timing(waitingOrbitAnim, {
+                toValue: 1,
+                duration: 4200,
+                easing: Easing.linear,
+                useNativeDriver: true,
+            })
+        );
+        const pulse = Animated.loop(
+            Animated.sequence([
+                Animated.timing(waitingPulseAnim, {
+                    toValue: 1.06,
+                    duration: 800,
+                    easing: Easing.inOut(Easing.quad),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(waitingPulseAnim, {
+                    toValue: 1,
+                    duration: 800,
+                    easing: Easing.inOut(Easing.quad),
+                    useNativeDriver: true,
+                }),
+            ])
+        );
+        const orbitPath = Animated.loop(
+            Animated.sequence([
+                Animated.parallel([
+                    Animated.timing(waitingOrbitX, { toValue: 99, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+                    Animated.timing(waitingOrbitY, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+                ]),
+                Animated.parallel([
+                    Animated.timing(waitingOrbitX, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+                    Animated.timing(waitingOrbitY, { toValue: 99, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+                ]),
+                Animated.parallel([
+                    Animated.timing(waitingOrbitX, { toValue: -99, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+                    Animated.timing(waitingOrbitY, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+                ]),
+                Animated.parallel([
+                    Animated.timing(waitingOrbitX, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+                    Animated.timing(waitingOrbitY, { toValue: -99, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+                ]),
+            ])
+        );
+        const dots = Animated.loop(
+            Animated.sequence([
+                Animated.parallel([
+                    Animated.timing(waitingDotOne, { toValue: 1, duration: 240, useNativeDriver: true }),
+                    Animated.timing(waitingDotTwo, { toValue: 0.35, duration: 240, useNativeDriver: true }),
+                    Animated.timing(waitingDotThree, { toValue: 0.35, duration: 240, useNativeDriver: true }),
+                ]),
+                Animated.parallel([
+                    Animated.timing(waitingDotOne, { toValue: 0.35, duration: 240, useNativeDriver: true }),
+                    Animated.timing(waitingDotTwo, { toValue: 1, duration: 240, useNativeDriver: true }),
+                    Animated.timing(waitingDotThree, { toValue: 0.35, duration: 240, useNativeDriver: true }),
+                ]),
+                Animated.parallel([
+                    Animated.timing(waitingDotOne, { toValue: 0.35, duration: 240, useNativeDriver: true }),
+                    Animated.timing(waitingDotTwo, { toValue: 0.35, duration: 240, useNativeDriver: true }),
+                    Animated.timing(waitingDotThree, { toValue: 1, duration: 240, useNativeDriver: true }),
+                ]),
+            ])
+        );
+        orbit.start();
+        pulse.start();
+        orbitPath.start();
+        dots.start();
+        return () => {
+            orbit.stop();
+            pulse.stop();
+            orbitPath.stop();
+            dots.stop();
+        };
+    }, [
+        isPendingSetupState,
+        waitingDotOne,
+        waitingDotThree,
+        waitingDotTwo,
+        waitingOrbitAnim,
+        waitingOrbitX,
+        waitingOrbitY,
+        waitingPulseAnim,
+    ]);
+
+    React.useEffect(() => {
         if (!markerTap) return;
         const { width, height } = imageSizeRef.current;
         const targetX = markerTap.x * width - 14;
@@ -422,6 +535,11 @@ const ThresholdGameScreen = () => {
                 x: clamp01(locationX / width),
                 y: clamp01(locationY / height),
             };
+            console.log(
+                `[GameTap] game_id=${game.game_id} x=${nextTap.x.toFixed(6)} y=${nextTap.y.toFixed(6)} px=${locationX.toFixed(
+                    1
+                )},${locationY.toFixed(1)}`
+            );
             setSelectedTap(nextTap);
             animateImageTilt(locationX, locationY, true);
             animateMarkerPick();
@@ -523,31 +641,131 @@ const ThresholdGameScreen = () => {
             <Nav title="Threshold Game" onPress={() => null} />
 
             {!game ? (
-                <View className="flex-1 items-center justify-center px-4">
-                    <View
-                        className="w-full rounded-2xl border p-4"
-                        style={{
-                            backgroundColor: colors.backgroundAlt,
-                            borderColor: alert?.tone === 'error' ? `${colors.error}50` : colors.border,
-                        }}
-                    >
-                        <AppText className="text-center text-sm" style={{ color: alert?.tone === 'error' ? colors.error : colors.textSecondary }}>
-                            {alert?.message ?? 'No active threshold game right now.'}
-                        </AppText>
-                        <AppText className="mt-2 text-center text-xs" style={{ color: colors.textSecondary }}>
-                            {lastUpdatedLabel ? `Last updated: ${lastUpdatedLabel}` : 'Checking cycle status...'}
-                        </AppText>
-                        <AppButton
-                            title={isRefreshing ? 'Refreshing...' : 'Refresh'}
-                            icon="refresh"
-                            onClick={() => void syncGame(false, true)}
-                            loading={isRefreshing}
-                            disabled={isRefreshing}
-                            fullWidth
-                            style={{ marginTop: 12 }}
-                        />
+                isPendingSetupState ? (
+                    <View className="flex-1 px-4">
+                        <View
+                            style={{
+                                flex: 1,
+                                borderRadius: 24,
+                                padding: 20,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                backgroundColor: colors.background,
+                            }}
+                        >
+                            <Animated.View
+                                style={{
+                                    width: 210,
+                                    height: 210,
+                                    borderRadius: 105,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    borderWidth: 1.5,
+                                    borderColor: `${colors.accent}66`,
+                                    transform: [
+                                        {
+                                            rotate: waitingOrbitAnim.interpolate({
+                                                inputRange: [0, 1],
+                                                outputRange: ['0deg', '360deg'],
+                                            }),
+                                        },
+                                        { scale: waitingPulseAnim },
+                                    ],
+                                }}
+                            >
+                                <View
+                                    style={{
+                                        position: 'absolute',
+                                        left: '50%',
+                                        top: '50%',
+                                    }}
+                                >
+                                    <Animated.View
+                                        style={{
+                                            width: 12,
+                                            height: 12,
+                                            borderRadius: 6,
+                                            backgroundColor: colors.warning,
+                                            transform: [{ translateX: waitingOrbitX }, { translateY: waitingOrbitY }],
+                                        }}
+                                    />
+                                </View>
+                                <View
+                                    style={{
+                                        width: 116,
+                                        height: 116,
+                                        borderRadius: 58,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        backgroundColor: `${colors.accent}22`,
+                                    }}
+                                >
+                                    <Ionicons name="construct-outline" size={44} color={colors.warning} />
+                                </View>
+                            </Animated.View>
+
+                            <AppText className="mt-6 text-2xl font-bold text-center">
+                                Game Is Warming Up
+                            </AppText>
+                            <AppText className="mt-3 text-sm text-center" style={{ color: colors.textSecondary }}>
+                                Admin is preparing and publishing this cycle game. Stay here, we will auto-refresh until it is live.
+                            </AppText>
+
+                            <View className="mt-4 flex-row items-center">
+                                <Animated.View style={{ opacity: waitingDotOne }}>
+                                    <View className="h-2.5 w-2.5 rounded-full mx-1" style={{ backgroundColor: colors.warning }} />
+                                </Animated.View>
+                                <Animated.View style={{ opacity: waitingDotTwo }}>
+                                    <View className="h-2.5 w-2.5 rounded-full mx-1" style={{ backgroundColor: colors.warning }} />
+                                </Animated.View>
+                                <Animated.View style={{ opacity: waitingDotThree }}>
+                                    <View className="h-2.5 w-2.5 rounded-full mx-1" style={{ backgroundColor: colors.warning }} />
+                                </Animated.View>
+                            </View>
+
+                            <View className="mt-5 w-full">
+                                <AppButton
+                                    title={isRefreshing ? 'Checking...' : 'Check Now'}
+                                    icon="refresh"
+                                    onClick={() => void syncGame(false, true)}
+                                    loading={isRefreshing}
+                                    disabled={isRefreshing}
+                                    fullWidth
+                                    style={{ backgroundColor: colors.accent }}
+                                />
+                            </View>
+                            <AppText className="mt-3 text-xs text-center" style={{ color: colors.textSecondary }}>
+                                {lastUpdatedLabel ? `Last check: ${lastUpdatedLabel}` : 'Waiting for first sync...'}
+                            </AppText>
+                        </View>
                     </View>
-                </View>
+                ) : (
+                    <View className="flex-1 items-center justify-center px-4">
+                        <View
+                            className="w-full rounded-2xl border p-4"
+                            style={{
+                                backgroundColor: colors.backgroundAlt,
+                                borderColor: alert?.tone === 'error' ? `${colors.error}50` : colors.border,
+                            }}
+                        >
+                            <AppText className="text-center text-sm" style={{ color: alert?.tone === 'error' ? colors.error : colors.textSecondary }}>
+                                {alert?.message ?? 'No active threshold game right now.'}
+                            </AppText>
+                            <AppText className="mt-2 text-center text-xs" style={{ color: colors.textSecondary }}>
+                                {lastUpdatedLabel ? `Last updated: ${lastUpdatedLabel}` : 'Checking cycle status...'}
+                            </AppText>
+                            <AppButton
+                                title={isRefreshing ? 'Refreshing...' : 'Refresh'}
+                                icon="refresh"
+                                onClick={() => void syncGame(false, true)}
+                                loading={isRefreshing}
+                                disabled={isRefreshing}
+                                fullWidth
+                                style={{ marginTop: 12 }}
+                            />
+                        </View>
+                    </View>
+                )
             ) : (
                 <ScrollView
                     showsVerticalScrollIndicator={false}
@@ -608,7 +826,16 @@ const ThresholdGameScreen = () => {
                         </AppText>
                     </View>
 
-                    <View className="mt-4 overflow-hidden rounded-2xl border" style={{ borderColor: `${colors.accent}50` }}>
+                    <View
+                        className="self-start px-3 py-1 rounded-full mt-4 mb-2"
+                        style={{ backgroundColor: `${colors.accent}20` }}
+                    >
+                        <AppText className="text-xs font-semibold" style={{ color: colors.textSecondary }}>
+                            Tap The Exact Spot
+                        </AppText>
+                    </View>
+
+                    <View className="overflow-hidden rounded-2xl border" style={{ borderColor: `${colors.accent}50` }}>
                         <Pressable
                             onLayout={onImageLayout}
                             onPress={handleImageTap}
@@ -646,19 +873,16 @@ const ThresholdGameScreen = () => {
                                     ],
                                 }}
                             >
-                            <ImageBackground source={{ uri: game.image_url }} resizeMode="cover" style={{ width: '100%', height: '100%' }}>
+                            <ImageBackground
+                                source={{ uri: game.image_url }}
+                                resizeMode="cover"
+                                style={{ width: '100%', height: '100%' }}
+                            >
                                 <LinearGradient
                                     colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.38)']}
                                     style={{ flex: 1, padding: 10, justifyContent: 'space-between' }}
                                 >
-                                    <View
-                                        className="self-start px-3 py-1 rounded-full"
-                                        style={{ backgroundColor: 'rgba(255,255,255,0.24)' }}
-                                    >
-                                        <AppText className="text-xs font-semibold" color={colors.white}>
-                                            Tap The Exact Spot
-                                        </AppText>
-                                    </View>
+                                    <View />
 
                                     {markerTap && (
                                         <Animated.View

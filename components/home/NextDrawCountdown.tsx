@@ -35,6 +35,11 @@ const NextDrawCountdown = ({
     const isCycleCollecting = normalizedState === 'collecting' || normalizedState === 'open' || normalizedState.length === 0;
     const isThresholdMet = isCycleCollecting ? simulatedPool >= threshold : true;
     const isGameOpen = normalizedState === 'threshold_met_game_open' || isTestMode;
+    const canEnterGameScreen =
+        isGameOpen ||
+        normalizedState === 'threshold_met_game_pending' ||
+        normalizedState === 'threshold_met_game_closed' ||
+        normalizedState === 'distribution_processing';
 
     const fillAnim = React.useRef(new Animated.Value(progressPercent)).current;
     const pulseAnim = React.useRef(new Animated.Value(1)).current;
@@ -140,7 +145,7 @@ const NextDrawCountdown = ({
                         <Ionicons name="trophy" size={24} color={colors.white} />
                     </View>
 
-                    {isGameOpen && (
+                    {canEnterGameScreen && (
                         <AppButton
                             title="Play Game"
                             icon="game-controller"

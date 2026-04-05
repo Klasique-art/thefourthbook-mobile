@@ -5,55 +5,6 @@ import { isLikelyUnreachableApiError, markApiAvailable, markApiUnavailable } fro
 import { authStorage } from '@/lib/auth';
 import { authEvents } from '@/lib/authEvents';
 
-const toErrorPreview = (data: unknown): string | unknown => {
-    const truncateToWords = (input: string, maxWords = 500) => {
-        const words = input.trim().split(/\s+/);
-        if (words.length <= maxWords) return input;
-        return `${words.slice(0, maxWords).join(' ')} ...[truncated]`;
-    };
-
-    if (typeof data === 'string') return truncateToWords(data, 500);
-    try {
-        return truncateToWords(JSON.stringify(data), 500);
-    } catch {
-        return data;
-    }
-};
-
-const extractFirstErrorText = (value: unknown): string | null => {
-    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
-    if (Array.isArray(value)) {
-        for (const item of value) {
-            const found = extractFirstErrorText(item);
-            if (found) return found;
-        }
-        return null;
-    }
-    if (value && typeof value === 'object') {
-        for (const nested of Object.values(value as Record<string, unknown>)) {
-            const found = extractFirstErrorText(nested);
-            if (found) return found;
-        }
-    }
-    return null;
-};
-
-const toReadableError = (error: any): string => {
-    const data = error?.response?.data;
-    return (
-        extractFirstErrorText(data?.error?.details?.error?.details) ||
-        extractFirstErrorText(data?.error?.details?.error?.message) ||
-        extractFirstErrorText(data?.error?.details?.message) ||
-        extractFirstErrorText(data?.error?.details) ||
-        extractFirstErrorText(data?.error?.message) ||
-        extractFirstErrorText(data?.detail) ||
-        extractFirstErrorText(data?.message) ||
-        extractFirstErrorText(data?.error) ||
-        error?.message ||
-        'Request failed'
-    );
-};
-
 function decodeJwtPayload(token: string): { exp?: number } | null {
     try {
         const payload = token.split('.')[1];
@@ -117,16 +68,6 @@ const getRefreshedAccessToken = async (): Promise<string> => {
             }
             return access;
         } catch (error) {
-            const status = (error as any)?.response?.status;
-            const message = toReadableError(error as any);
-            console.log(`[client] token refresh failed: ${message}`);
-            if (status >= 500 || !status) {
-                console.log('[client] token refresh debug', {
-                    message: (error as any)?.message,
-                    status,
-                    data_preview: toErrorPreview((error as any)?.response?.data),
-                });
-            }
             throw error;
         } finally {
             refreshPromise = null;
@@ -141,19 +82,6 @@ const client = axios.create({
     headers: { 'Content-Type': 'application/json' },
     timeout: 15000,
 });
-
-const toResolvedRequestUrl = (config?: AxiosRequestConfig): string | undefined => {
-    if (!config) return undefined;
-    try {
-        return client.getUri(config);
-    } catch {
-        const base = config.baseURL ?? API_BASE_URL;
-        const path = config.url ?? '';
-        if (!path) return base;
-        if (/^https?:\/\//i.test(path)) return path;
-        return `${String(base).replace(/\/+$/, '')}/${String(path).replace(/^\/+/, '')}`;
-    }
-};
 
 client.interceptors.request.use(async (config) => {
     try {
@@ -214,24 +142,6 @@ client.interceptors.response.use(
                     authEvents.emitUnauthorized();
                 }
             }
-        }
-
-        const status = error?.response?.status;
-        const message = toReadableError(error);
-        const fullUrl = toResolvedRequestUrl(error?.config);
-        console.log(
-            `[client] request failed (${error?.config?.method?.toUpperCase()} ${fullUrl ?? error?.config?.url}): ${message}`
-        );
-        if (status >= 500 || !status) {
-            console.log('[client] request failed debug', {
-                full_url: fullUrl,
-                url: error?.config?.url,
-                base_url: error?.config?.baseURL,
-                method: error?.config?.method,
-                message: error?.message,
-                status,
-                data_preview: toErrorPreview(error?.response?.data),
-            });
         }
 
         if (isLikelyUnreachableApiError(error)) {

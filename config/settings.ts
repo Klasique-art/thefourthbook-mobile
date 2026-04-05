@@ -15,7 +15,12 @@ export const PAYMENT_CALLBACK_URL = isProduction ? PROD_PAYMENT_CALLBACK_URL : D
 
 const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, any>;
 const googleOAuth = (extra.googleOAuth ?? {}) as Record<string, string | undefined>;
+const simulation = (extra.simulation ?? {}) as Record<string, string | undefined>;
 
 export const GOOGLE_ANDROID_CLIENT_ID = googleOAuth.androidClientId ?? '';
 export const GOOGLE_IOS_CLIENT_ID = googleOAuth.iosClientId ?? '';
 export const GOOGLE_WEB_CLIENT_ID = googleOAuth.webClientId ?? '';
+export const SIMULATION_API_SECRET =
+    simulation.apiSecret ??
+    process.env.EXPO_PUBLIC_SIMULATION_API_SECRET ??
+    '';

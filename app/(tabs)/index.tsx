@@ -172,50 +172,46 @@ export default function HomeScreen() {
         const cycleId = currentDraw?.draw_id;
         if (!cycleId) return;
         try {
-            console.log(
-                `[ThresholdDebug][simulate] start cycle_id=${cycleId} draw_state=${String(
-                    currentDraw?.distribution_state ?? currentDraw?.status ?? 'unknown'
-                )} total_pool=${String(currentDraw?.total_pool ?? 'n/a')} target_pool=${String(
-                    currentDraw?.target_pool ?? 'n/a'
-                )}`
-            );
-            const simulation = await thresholdGameService.simulateThresholdMet(cycleId);
-            console.log(
-                `[ThresholdDebug][simulate] done cycle_id=${simulation.cycle_id} state=${simulation.distribution_state} game_exists=${String(
-                    simulation.game?.exists
-                )} game_id=${String(simulation.game?.game_id ?? 'none')} expected_next_transition_at=${String(
-                    simulation.expected_next_transition_at ?? 'n/a'
-                )} server_time=${String(simulation.server_time ?? 'n/a')}`
-            );
+            const simulation = await thresholdGameService.simulateGameFlow(cycleId, {
+                pending_seconds: 5,
+                open_seconds: 90,
+                auto_create_game: true,
+                auto_publish_game: true,
+                auto_close_game: true,
+                auto_rollover: true,
+            });
             await fetchCurrentDraw();
-            try {
-                const cycleAfterSimulation = await thresholdGameService.getCurrentCycle();
-                console.log(
-                    `[ThresholdDebug][simulate] post-fetch cycle_id=${cycleAfterSimulation.cycle_id} state=${cycleAfterSimulation.distribution_state} game_exists=${String(
-                        cycleAfterSimulation.game?.exists
-                    )} game_id=${String(cycleAfterSimulation.game?.game_id ?? 'none')} expected_next_transition_at=${String(
-                        cycleAfterSimulation.expected_next_transition_at ?? 'n/a'
-                    )} server_time=${String(cycleAfterSimulation.server_time ?? 'n/a')}`
-                );
-            } catch (postCheckError: any) {
-                console.log(
-                    `[ThresholdDebug][simulate] post-fetch cycle check failed status=${String(
-                        postCheckError?.status ?? postCheckError?.response?.status ?? 'n/a'
-                    )} message=${String(postCheckError?.message ?? 'unknown')}`
-                );
-            }
+            // burst polling to quickly catch pending->open transition after simulation kickoff
+            setTimeout(() => void fetchCurrentDraw(), 2500);
+            setTimeout(() => void fetchCurrentDraw(), 5500);
+            setTimeout(() => void fetchCurrentDraw(), 9000);
+            void simulation;
         } catch (error: any) {
             const message = String(error?.message || '');
-            console.log(
-                `[ThresholdDebug][simulate] failed cycle_id=${cycleId} status=${String(
-                    error?.status ?? error?.response?.status ?? 'n/a'
-                )} message=${message} data=${JSON.stringify(error?.data ?? error?.response?.data ?? {})}`
-            );
-            if (message.toLowerCase().includes('not eligible')) {
+            const lower = message.toLowerCase();
+            if (lower.includes('not eligible')) {
                 setStatusModal({
                     visible: true,
                     title: 'Not Eligible',
                     message,
+                    variant: 'info',
+                });
+                return;
+            }
+            if (lower.includes('not enabled')) {
+                setStatusModal({
+                    visible: true,
+                    title: 'Simulation Disabled',
+                    message: 'Simulation API is disabled on this backend environment.',
+                    variant: 'info',
+                });
+                return;
+            }
+            if (lower.includes('not allowed')) {
+                setStatusModal({
+                    visible: true,
+                    title: 'Simulation Permission',
+                    message: 'Your account is not allowed to run simulation endpoints.',
                     variant: 'info',
                 });
                 return;
@@ -257,9 +253,6 @@ export default function HomeScreen() {
             });
             const hasLocalCycleProof = locallyVerifiedCycleId === cycle.cycle_id;
             const isPaidForGame = Boolean(paymentStatus.has_paid || hasSettledPaymentEvidence || hasLocalCycleProof);
-            console.log(
-                `[cycle-payment-check][home-play-guard] cycle_id=${currentDraw?.draw_id ?? 'unknown'} has_paid=${String(paymentStatus.has_paid)} has_settled_evidence=${String(hasSettledPaymentEvidence)} local_cycle_proof=${String(hasLocalCycleProof)} paid_for_game=${String(isPaidForGame)}`
-            );
             if (!isPaidForGame) {
                 setStatusModal({
                     visible: true,
@@ -271,34 +264,25 @@ export default function HomeScreen() {
                 return;
             }
 
-            console.log(
-                `[cycle-payment-check][home-play-guard] cycle_id=${cycle.cycle_id} has_paid=${String(paymentStatus.has_paid)} has_settled_evidence=${String(hasSettledPaymentEvidence)} local_cycle_proof=${String(hasLocalCycleProof)} paid_for_game=${String(isPaidForGame)} state=${cycle.distribution_state}`
-            );
-            if (cycle.distribution_state !== 'threshold_met_game_open') {
-                console.log(
-                    `[ThresholdDebug][home-play] blocked_state cycle_id=${cycle.cycle_id} state=${cycle.distribution_state} game_exists=${String(
-                        cycle.game?.exists
-                    )} game_id=${String(cycle.game?.game_id ?? 'none')} expected_next_transition_at=${String(
-                        cycle.expected_next_transition_at ?? 'n/a'
-                    )} server_time=${String(cycle.server_time ?? 'n/a')}`
-                );
+            const state = cycle.distribution_state;
+            if (state === 'threshold_met_game_pending' || state === 'threshold_met_game_open') {
+                router.push('/draws/threshold-game' as any);
+                return;
+            }
+            if (state !== 'threshold_met_game_open') {
                 setStatusModal({
                     visible: true,
                     title: 'Game Not Open',
-                    message: 'The threshold game is not open for this cycle yet.',
+                    message:
+                        state === 'threshold_met_game_closed' || state === 'distribution_processing'
+                            ? 'Game window is closed for this cycle.'
+                            : 'The threshold game is not open for this cycle yet.',
                     variant: 'info',
                 });
                 return;
             }
 
             if (!cycle.game.exists || !cycle.game.game_id) {
-                console.log(
-                    `[ThresholdDebug][home-play] no_active_game cycle_id=${cycle.cycle_id} state=${cycle.distribution_state} game_exists=${String(
-                        cycle.game.exists
-                    )} game_id=${String(cycle.game.game_id ?? 'none')} game_status=${String(
-                        cycle.game.status ?? 'n/a'
-                    )}`
-                );
                 setStatusModal({
                     visible: true,
                     title: 'Game Unavailable',
@@ -314,11 +298,6 @@ export default function HomeScreen() {
             } catch (error: unknown) {
                 const apiError = error as ThresholdGameApiError;
                 const message = String(apiError?.message || '');
-                console.log(
-                    `[ThresholdDebug][home-play] submission_check_failed cycle_id=${cycle.cycle_id} game_id=${cycle.game.game_id} status=${String(
-                        apiError?.status ?? 'n/a'
-                    )} message=${message} data=${JSON.stringify(apiError?.data ?? {})}`
-                );
                 if (apiError?.status === 403 || message.toLowerCase().includes('not eligible')) {
                     setStatusModal({
                         visible: true,
