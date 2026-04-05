@@ -28,11 +28,18 @@ export default function PriorityHomeScreen() {
 
     const isPriority = isPriorityUser(user);
     const isGameOpen = cycle?.distribution_state === 'threshold_met_game_open' && Boolean(cycle?.game?.game_id);
-    const statusLine = refreshing
-        ? 'Checking game availability...'
-        : error
-            ? `Game status unavailable. ${error}`
-            : 'No game is live right now. Tap anywhere to check again.';
+    const statusLine = React.useMemo(() => {
+        if (refreshing) return 'Checking game availability...';
+        if (error) return `Game status unavailable. ${error}`;
+        if (!cycle) return 'Checking game availability...';
+        if (cycle.distribution_state === 'threshold_met_game_pending') {
+            return 'Game setup is in progress. We are waiting for admin to publish this cycle game.';
+        }
+        if (cycle.distribution_state === 'threshold_met_game_closed' || cycle.distribution_state === 'distribution_processing') {
+            return 'This game window is closed. A new cycle will open immediately after rollover.';
+        }
+        return 'No game is live right now. Tap anywhere to check again.';
+    }, [cycle, error, refreshing]);
     const isDark = theme === 'dark';
     const gradientColors: [string, string, ...string[]] = isDark
         ? ['#130A05', '#231005', '#110A08']

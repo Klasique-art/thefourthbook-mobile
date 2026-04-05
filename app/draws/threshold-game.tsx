@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import React from 'react';
 import {
     ActivityIndicator,
@@ -21,7 +22,9 @@ import AppModal from '@/components/ui/AppModal';
 import AppText from '@/components/ui/AppText';
 import StatusModal from '@/components/ui/StatusModal';
 import { useColors } from '@/config';
+import { useAuth } from '@/context/AuthContext';
 import { ThresholdGameApiError, thresholdGameService } from '@/lib/services/thresholdGameService';
+import { isPriorityUser } from '@/lib/userType';
 import {
     DistributionCycleCurrentResponse,
     DistributionGameActiveResponse,
@@ -92,6 +95,8 @@ const questionText = (game: DistributionGameActiveResponse | null) =>
     game?.question?.trim() || game?.prompt_text?.trim() || 'Tap where you believe the answer is located.';
 
 const ThresholdGameScreen = () => {
+    const router = useRouter();
+    const { user } = useAuth();
     const colors = useColors();
     const [isLoading, setIsLoading] = React.useState(true);
     const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -125,6 +130,10 @@ const ThresholdGameScreen = () => {
     const imageDepthAnim = React.useRef(new Animated.Value(1)).current;
     const imageSizeRef = React.useRef({ width: 1, height: 1 });
     const [imageLayoutTick, setImageLayoutTick] = React.useState(0);
+    const currentCycleIdRef = React.useRef<string | null>(null);
+    const hadOpenGameRef = React.useRef(false);
+    const postCloseResyncScheduledRef = React.useRef(false);
+    const zeroBoundarySyncRef = React.useRef(false);
 
     const hasSubmitted = Boolean(game?.submission.has_submitted || submittedTap);
     const markerTap = hasSubmitted ? submittedTap : selectedTap;
@@ -142,6 +151,21 @@ const ThresholdGameScreen = () => {
 
         try {
             const cycle: DistributionCycleCurrentResponse = await thresholdGameService.getCurrentCycle();
+            const previousCycleId = currentCycleIdRef.current;
+            currentCycleIdRef.current = cycle.cycle_id;
+
+            if (previousCycleId && previousCycleId !== cycle.cycle_id) {
+                postCloseResyncScheduledRef.current = false;
+                setStatusModal({
+                    visible: true,
+                    title: 'New Cycle Started',
+                    message: 'A new cycle is now open. Winner payouts for the previous cycle are being processed.',
+                    variant: 'info',
+                });
+                router.replace((isPriorityUser(user) ? '/(tabs)/priority-home' : '/(tabs)') as any);
+                return;
+            }
+
             const cycleAlert = stateToAlert(cycle.distribution_state);
             if (cycleAlert) {
                 setGame(null);
@@ -149,6 +173,19 @@ const ThresholdGameScreen = () => {
                 setSelectedTap(null);
                 setSubmittedTap(null);
                 setRemainingMs(null);
+                if (
+                    hadOpenGameRef.current &&
+                    (cycle.distribution_state === 'threshold_met_game_closed' ||
+                        cycle.distribution_state === 'distribution_processing' ||
+                        cycle.distribution_state === 'distribution_completed') &&
+                    !postCloseResyncScheduledRef.current
+                ) {
+                    postCloseResyncScheduledRef.current = true;
+                    setTimeout(() => {
+                        postCloseResyncScheduledRef.current = false;
+                        void syncGame(false);
+                    }, 1500);
+                }
                 return;
             }
 
@@ -164,6 +201,7 @@ const ThresholdGameScreen = () => {
             const nextGame = await thresholdGameService.getActiveGame(cycle.cycle_id);
             setGame(nextGame);
             setAlert(statusToAlert(nextGame));
+            if (nextGame.status === 'open') hadOpenGameRef.current = true;
 
             if (nextGame.submission.has_submitted && nextGame.submission.tap_x !== null && nextGame.submission.tap_y !== null) {
                 const submitted = {
@@ -202,7 +240,7 @@ const ThresholdGameScreen = () => {
             if (manualRefresh) setIsRefreshing(false);
             if (showLoader) setIsLoading(false);
         }
-    }, []);
+    }, [router, user]);
 
     React.useEffect(() => {
         void syncGame(true);
@@ -227,6 +265,20 @@ const ThresholdGameScreen = () => {
         }, 1000);
         return () => clearInterval(ticker);
     }, [game]);
+
+    React.useEffect(() => {
+        if (!isGameOpen) {
+            zeroBoundarySyncRef.current = false;
+            return;
+        }
+        if (remainingMs === null || remainingMs > 0) {
+            zeroBoundarySyncRef.current = false;
+            return;
+        }
+        if (zeroBoundarySyncRef.current) return;
+        zeroBoundarySyncRef.current = true;
+        void syncGame(false);
+    }, [isGameOpen, remainingMs, syncGame]);
 
     const onImageLayout = React.useCallback((event: LayoutChangeEvent) => {
         imageSizeRef.current = {

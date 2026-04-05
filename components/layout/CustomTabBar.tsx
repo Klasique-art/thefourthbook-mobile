@@ -25,7 +25,7 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
         const { options } = descriptors[route.key];
         const hiddenByOptions = (options as any)?.href === null;
         if (hiddenByOptions) return false;
-        if (!isPriority) return true;
+        if (!isPriority) return route.name !== 'priority-home';
         return route.name === 'priority-home' || route.name === 'profile';
     });
 
