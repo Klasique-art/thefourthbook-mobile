@@ -143,8 +143,10 @@ const ThresholdGameScreen = () => {
     const hadOpenGameRef = React.useRef(false);
     const postCloseResyncScheduledRef = React.useRef(false);
     const zeroBoundarySyncRef = React.useRef(false);
+    const activeGameIdRef = React.useRef<string | null>(null);
 
     const hasSubmitted = Boolean(game?.submission.has_submitted || submittedTap);
+    const isPriority = isPriorityUser(user);
     const markerTap = hasSubmitted ? submittedTap : selectedTap;
     const isGameOpen = game?.status === 'open';
     const isPendingSetupState =
@@ -188,6 +190,7 @@ const ThresholdGameScreen = () => {
 
             const cycleAlert = stateToAlert(cycle.distribution_state);
             if (cycleAlert) {
+                activeGameIdRef.current = null;
                 setGame(null);
                 setAlert(cycleAlert);
                 setSelectedTap(null);
@@ -210,6 +213,7 @@ const ThresholdGameScreen = () => {
             }
 
             if (!cycle.game.exists || !cycle.game.game_id) {
+                activeGameIdRef.current = null;
                 setGame(null);
                 setAlert({ tone: 'info', message: 'No active game found right now.' });
                 setSelectedTap(null);
@@ -219,6 +223,9 @@ const ThresholdGameScreen = () => {
             }
 
             const nextGame = await thresholdGameService.getActiveGame(cycle.cycle_id);
+            const previousGameId = activeGameIdRef.current;
+            const isSameGame = previousGameId === nextGame.game_id;
+            activeGameIdRef.current = nextGame.game_id;
             setGame(nextGame);
             setAlert(statusToAlert(nextGame));
             if (nextGame.status === 'open') hadOpenGameRef.current = true;
@@ -232,7 +239,9 @@ const ThresholdGameScreen = () => {
                 setSelectedTap(submitted);
             } else {
                 setSubmittedTap(null);
-                setSelectedTap(null);
+                if (!isSameGame) {
+                    setSelectedTap(null);
+                }
             }
 
             if (nextGame.status === 'open') {
@@ -625,7 +634,16 @@ const ThresholdGameScreen = () => {
     if (isLoading) {
         return (
             <Screen>
-                <Nav title="Threshold Game" onPress={() => null} />
+                {isPriority ? (
+                    <View
+                        className="mb-2 w-full items-center rounded-2xl border px-4 py-3"
+                        style={{ backgroundColor: colors.backgroundAlt, borderColor: colors.border }}
+                    >
+                        <AppText className="text-base font-semibold">Threshold Game</AppText>
+                    </View>
+                ) : (
+                    <Nav title="Threshold Game" />
+                )}
                 <View className="flex-1 items-center justify-center">
                     <ActivityIndicator size="large" color={colors.accent} />
                     <AppText className="mt-3 text-sm" style={{ color: colors.textSecondary }}>
@@ -638,7 +656,16 @@ const ThresholdGameScreen = () => {
 
     return (
         <Screen>
-            <Nav title="Threshold Game" onPress={() => null} />
+            {isPriority ? (
+                <View
+                    className="mb-2 w-full items-center rounded-2xl border px-4 py-3"
+                    style={{ backgroundColor: colors.backgroundAlt, borderColor: colors.border }}
+                >
+                    <AppText className="text-base font-semibold">Threshold Game</AppText>
+                </View>
+            ) : (
+                <Nav title="Threshold Game" />
+            )}
 
             {!game ? (
                 isPendingSetupState ? (

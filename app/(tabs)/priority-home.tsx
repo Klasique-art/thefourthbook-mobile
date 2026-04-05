@@ -13,6 +13,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { thresholdGameService } from '@/lib/services/thresholdGameService';
 import { isPriorityUser } from '@/lib/userType';
 import { DistributionCycleCurrentResponse } from '@/types/threshold-game.types';
+import ThresholdGameScreen from '@/app/draws/threshold-game';
 
 export default function PriorityHomeScreen() {
     const { user } = useAuth();
@@ -158,7 +159,7 @@ export default function PriorityHomeScreen() {
         return <Redirect href="/(tabs)" />;
     }
     if (isGameOpen) {
-        return <Redirect href="/draws/threshold-game" />;
+        return <ThresholdGameScreen />;
     }
 
     const spin = rotateAnim.interpolate({
