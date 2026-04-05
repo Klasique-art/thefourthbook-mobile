@@ -6,6 +6,7 @@ import CustomTabBar from '@/components/layout/CustomTabBar';
 import WinnerAlertModal from '@/components/ui/WinnerAlertModal';
 import { useAuth } from '@/context/AuthContext';
 import { winnerAlertService } from '@/lib/services/winnerAlertService';
+import { isPriorityUser } from '@/lib/userType';
 import { WinnerAlertItem } from '@/types/winner-alert.types';
 
 const isAckRequired = (value: unknown): boolean => {
@@ -19,7 +20,8 @@ const isAckRequired = (value: unknown): boolean => {
 };
 
 export default function TabsLayout() {
-    const { isAuthenticated, isLoading } = useAuth();
+    const { isAuthenticated, isLoading, user } = useAuth();
+    const isPriority = isPriorityUser(user);
     const [winnerAlert, setWinnerAlert] = React.useState<WinnerAlertItem | null>(null);
     const [isAlertVisible, setIsAlertVisible] = React.useState(false);
     const [isAcknowledging, setIsAcknowledging] = React.useState(false);
@@ -30,6 +32,7 @@ export default function TabsLayout() {
     const alertServerErrorBackoffUntilRef = React.useRef(0);
 
     const checkWinnerAlerts = React.useCallback(async () => {
+        if (isPriority) return;
         if (!isAuthenticated || alertCheckInFlightRef.current) return;
         const now = Date.now();
         if (now < alertServerErrorBackoffUntilRef.current) return;
@@ -58,7 +61,7 @@ export default function TabsLayout() {
         } finally {
             alertCheckInFlightRef.current = false;
         }
-    }, [isAuthenticated]);
+    }, [isAuthenticated, isPriority]);
 
     const handleAcknowledge = React.useCallback(async () => {
         if (!winnerAlert || isAcknowledging) return;
@@ -78,11 +81,13 @@ export default function TabsLayout() {
     }, [checkWinnerAlerts, isAcknowledging, winnerAlert]);
 
     React.useEffect(() => {
+        if (isPriority) return;
         if (!isAuthenticated) return;
         void checkWinnerAlerts();
-    }, [checkWinnerAlerts, isAuthenticated]);
+    }, [checkWinnerAlerts, isAuthenticated, isPriority]);
 
     React.useEffect(() => {
+        if (isPriority) return;
         if (!isAuthenticated) return;
         const sub = AppState.addEventListener('change', (nextState) => {
             if (nextState === 'active') {
@@ -90,40 +95,46 @@ export default function TabsLayout() {
             }
         });
         return () => sub.remove();
-    }, [checkWinnerAlerts, isAuthenticated]);
+    }, [checkWinnerAlerts, isAuthenticated, isPriority]);
 
     React.useEffect(() => {
+        if (isPriority) return;
         if (!isAuthenticated) return;
         const poller = setInterval(() => {
             void checkWinnerAlerts();
         }, 30000);
         return () => clearInterval(poller);
-    }, [checkWinnerAlerts, isAuthenticated]);
+    }, [checkWinnerAlerts, isAuthenticated, isPriority]);
 
     if (isLoading) return null;
     if (!isAuthenticated) return <Redirect href="/(auth)/login" />;
+    if (!user) return null;
 
     return (
         <>
             <Tabs
+                key={isPriority ? 'priority-tabs' : 'normal-tabs'}
                 tabBar={(props) => <CustomTabBar {...props} />}
                 screenOptions={{
                     headerShown: false,
                 }}
             >
-                <Tabs.Screen name="index" />
-                <Tabs.Screen name="dashboard" />
-                <Tabs.Screen name="draws" />
-                <Tabs.Screen name="wallet" />
+                <Tabs.Screen name="priority-home" options={{ href: isPriority ? undefined : null }} />
+                <Tabs.Screen name="index" options={{ href: isPriority ? null : undefined }} />
+                <Tabs.Screen name="dashboard" options={{ href: isPriority ? null : undefined }} />
+                <Tabs.Screen name="draws" options={{ href: isPriority ? null : undefined }} />
+                <Tabs.Screen name="wallet" options={{ href: isPriority ? null : undefined }} />
                 <Tabs.Screen name="profile" />
             </Tabs>
-            <WinnerAlertModal
-                visible={isAlertVisible}
-                alert={winnerAlert}
-                isAcknowledging={isAcknowledging}
-                acknowledgeError={acknowledgeError}
-                onAcknowledge={handleAcknowledge}
-            />
+            {!isPriority && (
+                <WinnerAlertModal
+                    visible={isAlertVisible}
+                    alert={winnerAlert}
+                    isAcknowledging={isAcknowledging}
+                    acknowledgeError={acknowledgeError}
+                    onAcknowledge={handleAcknowledge}
+                />
+            )}
         </>
     );
 }

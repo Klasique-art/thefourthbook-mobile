@@ -10,13 +10,24 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/config/colors';
+import { useAuth } from '@/context/AuthContext';
+import { isPriorityUser } from '@/lib/userType';
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 export default function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     const colors = useColors();
+    const { user } = useAuth();
+    const isPriority = isPriorityUser(user);
     const insets = useSafeAreaInsets();
     const bottomPadding = Math.max(insets.bottom, 10);
+    const visibleRoutes = state.routes.filter((route) => {
+        const { options } = descriptors[route.key];
+        const hiddenByOptions = (options as any)?.href === null;
+        if (hiddenByOptions) return false;
+        if (!isPriority) return true;
+        return route.name === 'priority-home' || route.name === 'profile';
+    });
 
     return (
         <View style={[styles.container, {
@@ -25,9 +36,9 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
             paddingBottom: bottomPadding,
         }]}>
             <View style={styles.tabsContainer}>
-                {state.routes.map((route, index) => {
+                {visibleRoutes.map((route) => {
                     const { options } = descriptors[route.key];
-                    const isFocused = state.index === index;
+                    const isFocused = state.routes[state.index]?.key === route.key;
 
                     const onPress = () => {
                         const event = navigation.emit({
@@ -53,6 +64,8 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
                         switch (routeName) {
                             case 'index':
                                 return focused ? 'home' : 'home-outline';
+                            case 'priority-home':
+                                return focused ? 'game-controller' : 'game-controller-outline';
                             case 'dashboard':
                                 return focused ? 'grid' : 'grid-outline';
                             case 'draws':
@@ -71,6 +84,8 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
                         switch (routeName) {
                             case 'index':
                                 return 'Home';
+                            case 'priority-home':
+                                return 'Game';
                             case 'dashboard':
                                 return 'Dashboard';
                             case 'draws':

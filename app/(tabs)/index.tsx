@@ -1,5 +1,5 @@
 import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
@@ -15,16 +15,20 @@ import {
     RecentWinnersCarousel,
 } from '@/components/home';
 import { useColors } from '@/config';
+import { useAuth } from '@/context/AuthContext';
 import type { DrawWinner } from '@/data/dummy.draws';
 import { APP_CONFIG, homeQuickActions } from '@/data/static.home';
 import { drawService } from '@/lib/services/drawService';
 import { distributionService } from '@/lib/services/distributionService';
 import { paymentService } from '@/lib/services/paymentService';
 import { ThresholdGameApiError, thresholdGameService } from '@/lib/services/thresholdGameService';
+import { isPriorityUser } from '@/lib/userType';
 import type { CurrentDraw } from '@/types/draw.types';
 const LAST_VERIFIED_PAYMENT_CYCLE_KEY = 'thefourthbook_last_verified_payment_cycle_id';
 
 export default function HomeScreen() {
+    const { user } = useAuth();
+    const isPriority = isPriorityUser(user);
     const router = useRouter();
     const colors = useColors();
     const [refreshing, setRefreshing] = React.useState(false);
@@ -90,6 +94,7 @@ export default function HomeScreen() {
     }, []);
 
     const fetchCurrentDraw = React.useCallback(async () => {
+        if (isPriority) return;
         try {
             const [draw, paymentStatus] = await Promise.all([
                 drawService.getCurrentDraw(),
@@ -104,9 +109,13 @@ export default function HomeScreen() {
         } finally {
             setLastSyncedAt(new Date().toISOString());
         }
-    }, []);
+    }, [isPriority]);
 
     const fetchRecentWinners = React.useCallback(async () => {
+        if (isPriority) {
+            setRecentWinners([]);
+            return;
+        }
         try {
             const history = await distributionService.getDistributionHistory();
             const parseCycleRank = (cycleId: string) => {
@@ -151,13 +160,15 @@ export default function HomeScreen() {
             console.error('[HomeScreen] fetchRecentWinners failed', error);
             setRecentWinners([]);
         }
-    }, []);
+    }, [isPriority]);
 
     const fetchHomeData = React.useCallback(async () => {
+        if (isPriority) return;
         await Promise.allSettled([fetchCurrentDraw(), fetchRecentWinners()]);
-    }, [fetchCurrentDraw, fetchRecentWinners]);
+    }, [fetchCurrentDraw, fetchRecentWinners, isPriority]);
 
     const handleSimulateThresholdMet = React.useCallback(async () => {
+        if (isPriority) return;
         const cycleId = currentDraw?.draw_id;
         if (!cycleId) return;
         try {
@@ -224,9 +235,11 @@ export default function HomeScreen() {
         currentDraw?.target_pool,
         currentDraw?.total_pool,
         fetchCurrentDraw,
+        isPriority,
     ]);
 
     const handlePlayGamePress = React.useCallback(async () => {
+        if (isPriority) return;
         if (isCheckingEligibility) return;
         setIsCheckingEligibility(true);
         try {
@@ -326,7 +339,7 @@ export default function HomeScreen() {
         } finally {
             setIsCheckingEligibility(false);
         }
-    }, [currentDraw?.draw_id, isCheckingEligibility, router]);
+    }, [currentDraw?.draw_id, isCheckingEligibility, isPriority, router]);
 
     const quickActionsWithHandlers = React.useMemo(
         () =>
@@ -348,27 +361,30 @@ export default function HomeScreen() {
     );
 
     React.useEffect(() => {
+        if (isPriority) return;
         void fetchHomeData();
-    }, [fetchHomeData]);
+    }, [fetchHomeData, isPriority]);
 
     useFocusEffect(
         React.useCallback(() => {
+            if (isPriority) return () => {};
             void fetchHomeData();
             const poller = setInterval(() => {
                 void fetchCurrentDraw();
             }, 15000);
             return () => clearInterval(poller);
-        }, [fetchCurrentDraw, fetchHomeData])
+        }, [fetchCurrentDraw, fetchHomeData, isPriority])
     );
 
     const onRefresh = React.useCallback(async () => {
+        if (isPriority) return;
         setRefreshing(true);
         try {
             await fetchHomeData();
         } finally {
             setRefreshing(false);
         }
-    }, [fetchHomeData]);
+    }, [fetchHomeData, isPriority]);
 
     const lastUpdatedLabel = React.useMemo(
         () => formatDateTimeLabel(lastSyncedAt),
@@ -388,6 +404,10 @@ export default function HomeScreen() {
             ? `At ${currencyFormatter.format(currentDraw.target_pool)} target`
             : formatDateLabel(currentDraw.registration_closes_at)
         : 'Loading...';
+
+    if (isPriority) {
+        return <Redirect href="/(tabs)/priority-home" />;
+    }
 
     return (
         <Screen className='pt-2'>

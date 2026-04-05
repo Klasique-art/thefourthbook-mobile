@@ -21,15 +21,10 @@ export const mockActiveDistributionGame: Omit<DistributionGameActiveResponse, 's
     game_id: 'game_01JABCXYZ',
     cycle_id: 'cyc_2026_02',
     title: 'Guess The Ball Position',
-    prompt_text: 'Two players are heading. What is the position of the ball?',
+    question: 'Two players are heading. Where is the ball?',
     image_url: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=1200&q=80',
     status: 'open',
     starts_at: '2026-02-16T12:00:00Z',
     ends_at: '2026-02-18T12:00:00Z',
-    options: [
-        { option_id: 'opt_a', label: 'A', text: 'Top right' },
-        { option_id: 'opt_b', label: 'B', text: 'Bottom left' },
-        { option_id: 'opt_c', label: 'C', text: 'Top left' },
-        { option_id: 'opt_d', label: 'D', text: 'Bottom right' },
-    ],
+    accepted_coordinate_available: false,
 };

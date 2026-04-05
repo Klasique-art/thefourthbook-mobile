@@ -33,42 +33,42 @@ export interface DistributionCycleCurrentResponse {
     };
 }
 
-export interface DistributionGameOption {
-    option_id: string;
-    label: string;
-    text: string;
-}
-
 export interface DistributionGameSubmissionState {
     has_submitted: boolean;
-    selected_option_id: string | null;
+    tap_x: number | null;
+    tap_y: number | null;
     submitted_at: string | null;
     locked: boolean;
+    is_correct?: boolean | null;
 }
 
 export interface DistributionGameActiveResponse {
     game_id: string;
     cycle_id: string;
     title: string;
-    prompt_text: string;
+    question?: string;
+    prompt_text?: string;
     image_url: string;
     status: DistributionGameStatus;
     starts_at: string;
     ends_at: string;
-    options: DistributionGameOption[];
+    accepted_coordinate_available?: boolean;
     submission: DistributionGameSubmissionState;
 }
 
 export interface SubmitDistributionGameAnswerPayload {
-    selected_option_id: string;
-    client_submitted_at: string;
+    tap_x: number;
+    tap_y: number;
+    client_submitted_at?: string;
 }
 
 export interface SubmitDistributionGameAnswerResponse {
     submission_id: string;
     game_id: string;
     member_id: string;
-    selected_option_id: string;
+    tap_x: number;
+    tap_y: number;
     submitted_at: string;
     locked: boolean;
+    is_correct?: boolean | null;
 }

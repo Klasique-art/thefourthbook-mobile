@@ -15,4 +15,5 @@ export interface CurrentUser {
     updated_at: string; // ISO datetime string
     referral_code: string | null;
     referred_by: string | null;
+    user_type?: 'normal' | 'priority';
 }

@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import { authStorage } from '@/lib/auth';
 import client from '@/lib/client';
 import { CurrentUser } from '@/types/user.types';
+import { resolveUserType } from '@/lib/userType';
 import {
     GoogleLoginRequest,
     LoginRequest,
@@ -240,7 +241,12 @@ export const authService = {
     async getCurrentUser(): Promise<CurrentUser> {
         try {
             const response = await client.get<{ success: boolean; data: CurrentUser }>('/users/profile/');
-            return response.data.data;
+            const sourceUser = response.data.data as CurrentUser & Record<string, unknown>;
+            const normalizedType = resolveUserType(sourceUser);
+            return {
+                ...sourceUser,
+                user_type: normalizedType ?? sourceUser.user_type,
+            };
         } catch (error) {
             logApiError('getCurrentUser', error);
             throw error;

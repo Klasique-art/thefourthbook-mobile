@@ -1,6 +1,7 @@
 import axios, { AxiosRequestConfig } from 'axios';
 
 import { API_BASE_URL } from '@/config/settings';
+import { isLikelyUnreachableApiError, markApiAvailable, markApiUnavailable } from '@/lib/apiHealth';
 import { authStorage } from '@/lib/auth';
 import { authEvents } from '@/lib/authEvents';
 
@@ -189,7 +190,10 @@ client.interceptors.request.use(async (config) => {
 });
 
 client.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        markApiAvailable();
+        return response;
+    },
     async (error) => {
         const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
 
@@ -228,6 +232,10 @@ client.interceptors.response.use(
                 status,
                 data_preview: toErrorPreview(error?.response?.data),
             });
+        }
+
+        if (isLikelyUnreachableApiError(error)) {
+            markApiUnavailable(error);
         }
 
         return Promise.reject(error);

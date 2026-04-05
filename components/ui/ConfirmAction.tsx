@@ -1,6 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { FC } from "react";
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
+import { useColors } from '@/config';
 import AppButton from "./AppButton";
 import AppText from "./AppText";
 
@@ -21,37 +23,66 @@ const ConfirmAction: FC<ConfirmActionProps> = ({
     confirmBtnTitle = "Confirm",
     isDestructive = true,
 }) => {
+    const colors = useColors();
+
     return (
-        <View className="p-6" style={{ minHeight: 280, zIndex: 100 }}>
-            {/* Title */}
-            <AppText
-                styles={`text-center text-xl mb-3 font-bold ${isDestructive ? "text-error" : "text-primary"}`}
-            >
-                {title}
-            </AppText>
+        <View className="p-6" style={{ minHeight: 340, zIndex: 100 }}>
+            <View className="items-center" style={{ marginBottom: 18 }}>
+                <View
+                    className="items-center justify-center"
+                    style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 28,
+                        marginBottom: 12,
+                        backgroundColor: isDestructive ? 'rgba(220,38,38,0.12)' : 'rgba(243,130,24,0.12)',
+                    }}
+                >
+                    <Ionicons
+                        name={isDestructive ? 'warning-outline' : 'help-circle-outline'}
+                        size={26}
+                        color={isDestructive ? colors.error : colors.accent}
+                    />
+                </View>
+                <AppText
+                    className="text-center text-2xl font-bold"
+                    style={{ color: isDestructive ? colors.error : colors.primary, marginBottom: 10 }}
+                >
+                    {title}
+                </AppText>
+                <AppText
+                    className="text-center text-sm"
+                    style={{ color: colors.textSecondary, lineHeight: 21, paddingHorizontal: 10 }}
+                >
+                    {desc}
+                </AppText>
+            </View>
 
-            {/* Description */}
-            <AppText styles="text-center text-sm text-textSecondary mb-8 px-2">
-                {desc}
-            </AppText>
-
-            {/* Action Buttons */}
-            <View style={{ gap: 12 }}>
-                {/* Confirm Button */}
+            <View style={{ gap: 14, marginTop: 6 }}>
                 <AppButton
                     title={confirmBtnTitle}
                     variant={isDestructive ? "danger" : "primary"}
                     size="lg"
                     onClick={onConfirm}
                 />
-
-                {/* Cancel Button */}
-                <AppButton
-                    title="Cancel"
-                    variant="outline"
-                    size="lg"
-                    onClick={onCancel}
-                />
+                <Pressable
+                    onPress={onCancel}
+                    accessibilityRole="button"
+                    style={{
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.backgroundAlt,
+                        paddingVertical: 16,
+                        paddingHorizontal: 24,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}
+                >
+                    <AppText className="text-lg font-semibold" style={{ color: colors.textPrimary }}>
+                        Cancel
+                    </AppText>
+                </Pressable>
             </View>
         </View>
     );

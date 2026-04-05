@@ -7,6 +7,7 @@ export type SignupRequest = {
     phone: string;
     date_of_birth: string;
     agree_to_terms: boolean;
+    user_type?: 'normal' | 'priority';
 };
 
 export type SignupResponse = Record<string, unknown>;

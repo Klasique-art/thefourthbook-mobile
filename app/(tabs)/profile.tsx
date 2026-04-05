@@ -16,12 +16,14 @@ import { KYC_VERIFIED_KEY } from '@/data/verification';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { mockCurrentUser } from '@/data/userData.dummy';
+import { isPriorityUser } from '@/lib/userType';
 
 export default function ProfileScreen() {
     const colors = useColors();
     const { t } = useTranslation();
     const { language, setLanguage } = useLanguage();
     const { logout, user } = useAuth();
+    const isPriority = isPriorityUser(user);
     const [isLanguageModalVisible, setIsLanguageModalVisible] = useState(false);
     const [isVerified, setIsVerified] = useState(false);
     const logoutSheetRef = useRef<AppBottomSheetRef>(null);
@@ -71,7 +73,9 @@ export default function ProfileScreen() {
 
     const accountSettings = [
         { id: 'account', label: 'Account Details', icon: 'person-outline', route: '/settings/account' },
-        { id: 'notifications', label: 'Notifications', icon: 'notifications-outline', route: '/notifications' },
+        ...(!isPriority
+            ? [{ id: 'notifications', label: 'Notifications', icon: 'notifications-outline', route: '/notifications' }]
+            : []),
     ];
 
     const appSettings = [
@@ -133,7 +137,7 @@ export default function ProfileScreen() {
 
                     <SettingsList title="Account" items={accountSettings as any} />
                     <SettingsList title="App Settings" items={appSettings as any} />
-                    <SettingsList title="Support" items={supportSettings as any} />
+                    {!isPriority && <SettingsList title="Support" items={supportSettings as any} />}
 
                     <SettingsList
                         items={[
@@ -204,6 +208,3 @@ export default function ProfileScreen() {
         </Screen>
     );
 }
-
-
-

@@ -14,6 +14,7 @@ export type SignupFormValues = {
     last_name: string;
     date_of_birth: string;
     agree_to_terms: boolean;
+    is_priority_user: boolean;
 };
 
 export type ForgotPasswordFormValues = {

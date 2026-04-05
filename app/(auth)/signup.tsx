@@ -11,6 +11,7 @@ import {
     Keyboard,
     KeyboardAvoidingView,
     Platform,
+    Pressable,
     ScrollView,
     TouchableOpacity,
     View,
@@ -21,7 +22,9 @@ import AppForm from '@/components/form/AppForm';
 import AppFormField from '@/components/form/AppFormField';
 import FormLoader from '@/components/form/FormLoader';
 import SubmitButton from '@/components/form/SubmitButton';
-import ToggleField from '@/components/form/ToggleField';
+import AppButton from '@/components/ui/AppButton';
+import AppModal from '@/components/ui/AppModal';
+import AppSwitch from '@/components/ui/AppSwitch';
 import AppText from '@/components/ui/AppText';
 import Screen from '@/components/ui/Screen';
 import StatusModal from '@/components/ui/StatusModal';
@@ -86,6 +89,110 @@ const SignupFormLoader = () => {
 const TermsError = () => {
     const { errors, touched } = useFormikContext<SignupFormValues>();
     return <AppErrorMessage error={errors.agree_to_terms as string} visible={Boolean(touched.agree_to_terms)} />;
+};
+
+const TermsSwitch = () => {
+    const { values, setFieldValue } = useFormikContext<SignupFormValues>();
+    const colors = useColors();
+    const value = Boolean(values.agree_to_terms);
+
+    return (
+        <AppSwitch
+            value={value}
+            onValueChange={(nextValue) => {
+                void setFieldValue('agree_to_terms', nextValue);
+            }}
+            activeTrackColor={colors.accent50}
+            activeThumbColor={colors.accent}
+            inactiveThumbColor={colors.textSecondary}
+            accessibilityLabel="Agree to terms switch"
+            accessibilityRole="switch"
+            accessibilityState={{ checked: value }}
+        />
+    );
+};
+
+const PriorityModeField = () => {
+    const { values, setFieldValue } = useFormikContext<SignupFormValues>();
+    const colors = useColors();
+    const isPriority = Boolean(values.is_priority_user);
+    const [priorityWarningVisible, setPriorityWarningVisible] = useState(false);
+
+    const handleToggle = (nextValue: boolean) => {
+        if (nextValue) {
+            setPriorityWarningVisible(true);
+            return;
+        }
+        void setFieldValue('is_priority_user', false);
+    };
+
+    return (
+        <>
+            <Pressable
+                onPress={() => handleToggle(!isPriority)}
+                accessibilityRole="button"
+                accessibilityLabel="Priority user mode"
+                accessibilityHint="Double tap to review priority access limits before enabling."
+                className="rounded-xl border p-4"
+                style={{ borderColor: colors.border, backgroundColor: colors.background }}
+            >
+                <View className="flex-row items-center justify-between">
+                    <View className="mr-4 flex-1">
+                        <AppText className="text-base font-semibold" style={{ color: colors.textPrimary }}>
+                            Priority User Mode
+                        </AppText>
+                        <AppText className="mt-1 text-xs" style={{ color: colors.textSecondary, lineHeight: 18 }}>
+                            Limited experience: current game and profile editing only.
+                        </AppText>
+                    </View>
+
+                    <AppSwitch
+                        value={isPriority}
+                        onValueChange={handleToggle}
+                        activeTrackColor={colors.accent50}
+                        activeThumbColor={colors.accent}
+                        inactiveThumbColor={colors.textSecondary}
+                        accessibilityLabel="Priority user mode switch"
+                        accessibilityRole="switch"
+                        accessibilityState={{ checked: isPriority }}
+                    />
+                </View>
+            </Pressable>
+            <AppModal
+                visible={priorityWarningVisible}
+                onClose={() => setPriorityWarningVisible(false)}
+                title="Priority Account Limits"
+                closeOnBackdropPress={false}
+            >
+                <AppText className="text-sm" style={{ color: colors.textSecondary, lineHeight: 22 }}>
+                    Priority accounts have limited app access. You will only be able to play the current game and edit your profile.
+                </AppText>
+                <AppText className="mt-2 text-sm" style={{ color: colors.textSecondary, lineHeight: 22 }}>
+                    You will not be able to use wallet, payment, dashboard, or notification features.
+                </AppText>
+                <View style={{ gap: 10, marginTop: 16 }}>
+                    <AppButton
+                        title="Accept and Continue"
+                        onClick={() => {
+                            setFieldValue('is_priority_user', true);
+                            setPriorityWarningVisible(false);
+                        }}
+                        fullWidth
+                    />
+                    <AppButton
+                        title="Keep Normal Account"
+                        variant="outline"
+                        onClick={() => {
+                            setFieldValue('is_priority_user', false);
+                            setPriorityWarningVisible(false);
+                        }}
+                        fullWidth
+                        style={{ borderColor: colors.border }}
+                    />
+                </View>
+            </AppModal>
+        </>
+    );
 };
 
 const SignupScreen = () => {
@@ -233,7 +340,16 @@ const SignupScreen = () => {
                 phone: values.phone.trim(),
                 date_of_birth: values.date_of_birth,
                 agree_to_terms: values.agree_to_terms,
+                user_type: values.is_priority_user ? 'priority' : 'normal',
             };
+
+            console.log(
+                `[Signup] payload -> ${JSON.stringify({
+                    ...payload,
+                    password: payload.password ? '[REDACTED]' : '',
+                    re_password: payload.re_password ? '[REDACTED]' : '',
+                })}`
+            );
 
             await signup(payload);
 
@@ -258,14 +374,7 @@ const SignupScreen = () => {
                 status: error?.response?.status,
                 data_preview: toErrorPreview(error?.response?.data),
             };
-            console.log(`[SignupScreen] signup failed :: ${JSON.stringify(logPayload)}`);
-            console.error(`[SignupScreen] signup failed :: ${JSON.stringify(logPayload)}`);
             const data = normalizeBackendData(error?.response?.data);
-            console.log(
-                `[SignupScreen] backend response data (raw) :: ${
-                    typeof data === 'string' ? data : JSON.stringify(data)
-                }`
-            );
 
             const parsedError =
                 extractFirstErrorText(getNestedValue(data, ['error', 'details', 'error', 'details', 'email'])) ||
@@ -278,6 +387,15 @@ const SignupScreen = () => {
                 extractFirstErrorText(getNestedValue(data, ['message'])) ||
                 extractFirstErrorText(getNestedValue(data, ['error'])) ||
                 'Registration failed. Please review your details and try again.';
+
+            const status = logPayload.status ?? 'n/a';
+            const backendCode =
+                String(
+                    getNestedValue(data, ['error', 'details', 'error', 'code']) ||
+                    getNestedValue(data, ['error', 'code']) ||
+                    ''
+                ).trim() || 'UNKNOWN';
+            console.log(`[Signup] failed (${status} ${backendCode}): ${parsedError}`);
 
             setApiError(parsedError);
             scrollViewRef.current?.scrollTo({ y: 0, animated: true });
@@ -340,6 +458,7 @@ const SignupScreen = () => {
                                 last_name: '',
                                 date_of_birth: '',
                                 agree_to_terms: false,
+                                is_priority_user: false,
                             }}
                             onSubmit={handleSubmit}
                             validationSchema={SignupValidationSchema}
@@ -410,11 +529,21 @@ const SignupScreen = () => {
                                 iconAria="Toggle password visibility"
                             />
 
-                            <ToggleField
-                                name="agree_to_terms"
-                                label="I agree to the terms and conditions"
-                                description="You must agree before creating your account."
-                            />
+                            <PriorityModeField />
+
+                            <View className="rounded-xl border p-4" style={{ borderColor: colors.border, backgroundColor: colors.background }}>
+                                <View className="flex-row items-center justify-between">
+                                    <View className="mr-4 flex-1">
+                                        <AppText className="text-base font-semibold" style={{ color: colors.textPrimary }}>
+                                            I agree to the terms and conditions
+                                        </AppText>
+                                        <AppText className="mt-1 text-xs" style={{ color: colors.textSecondary, lineHeight: 18 }}>
+                                            You must agree before creating your account.
+                                        </AppText>
+                                    </View>
+                                    <TermsSwitch />
+                                </View>
+                            </View>
                             <TouchableOpacity
                                 onPress={() => router.push('/terms' as Href)}
                                 accessibilityRole="button"
