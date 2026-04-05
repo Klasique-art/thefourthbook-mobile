@@ -1,5 +1,4 @@
 import client from '@/lib/client';
-import { SIMULATION_API_SECRET } from '@/config/settings';
 import {
     DistributionCycleCurrentResponse,
     DistributionGameActiveResponse,
@@ -66,9 +65,7 @@ const toApiErrorMessage = (error: any): string => {
     if (errorCode === 'SIMULATION_NOT_ENABLED') {
         return 'Simulation is not enabled in this backend environment.';
     }
-    if (errorCode === 'SIMULATION_NOT_ALLOWED') {
-        return 'You are not allowed to run simulation endpoints with this account.';
-    }
+    if (errorCode === 'SIMULATION_NOT_ALLOWED') return 'Simulation is currently unavailable for this account.';
     if (errorCode === 'CYCLE_NOT_FOUND') {
         return 'Cycle not found. Refresh and try again.';
     }
@@ -79,10 +76,10 @@ const toApiErrorMessage = (error: any): string => {
         return 'Simulation cannot run from the current cycle state yet.';
     }
     if (status === 403 && requestUrl.includes('/admin/testing/cycles/')) {
-        return 'You do not have permission to run staging simulation endpoints. Use an admin account/token.';
+        return 'Simulation request was blocked by backend permissions.';
     }
     if (status === 404 && requestUrl.includes('/admin/testing/cycles/')) {
-        return 'Testing simulation endpoint is not available on this backend environment (404).';
+        return 'Simulation endpoint not found on backend (404). Check ENABLE_SIMULATION_API and route deployment.';
     }
     if (status === 403) {
         return 'You are not eligible for this cycle. You need a qualifying contribution/payment in this cycle before you can play the threshold game.';
@@ -103,25 +100,14 @@ const postCycleSimulationWithFallback = async (
     cycleId: string,
     suffix: 'simulate-threshold-met' | 'simulate-game-close' | 'simulate-rollover'
 ): Promise<DistributionCycleCurrentResponse> => {
-    const encodedId = encodeURIComponent(cycleId);
-    const candidatePaths = [
-        `/admin/testing/cycles/${encodedId}/${suffix}/`,
-        `/distribution/admin/testing/cycles/${encodedId}/${suffix}/`,
-        `/distribution/testing/cycles/${encodedId}/${suffix}/`,
-    ];
+    const candidatePaths = buildSimulationCandidatePaths(cycleId, suffix);
 
     let lastError: any = null;
     for (const path of candidatePaths) {
         try {
             const response = await client.post<
                 Envelope<DistributionCycleCurrentResponse> | DistributionCycleCurrentResponse
-            >(path, undefined, {
-                headers: SIMULATION_API_SECRET
-                    ? {
-                          'X-Simulation-Secret': SIMULATION_API_SECRET,
-                      }
-                    : undefined,
-            });
+            >(path, undefined);
             return unwrap(response.data);
         } catch (error: any) {
             const status = error?.response?.status;
@@ -145,16 +131,19 @@ type SimulateGameFlowPayload = {
     auto_rollover?: boolean;
 };
 
+const buildSimulationCandidatePaths = (
+    cycleId: string,
+    suffix: 'simulate-threshold-met' | 'simulate-game-close' | 'simulate-rollover' | 'simulate-game-flow'
+) => {
+    const encodedId = encodeURIComponent(cycleId);
+    return [`/admin/testing/cycles/${encodedId}/${suffix}/`];
+};
+
 const postSimulateGameFlow = async (
     cycleId: string,
     payload: SimulateGameFlowPayload
 ): Promise<DistributionCycleCurrentResponse> => {
-    const encodedId = encodeURIComponent(cycleId);
-    const candidatePaths = [
-        `/admin/testing/cycles/${encodedId}/simulate-game-flow/`,
-        `/distribution/admin/testing/cycles/${encodedId}/simulate-game-flow/`,
-        `/distribution/testing/cycles/${encodedId}/simulate-game-flow/`,
-    ];
+    const candidatePaths = buildSimulationCandidatePaths(cycleId, 'simulate-game-flow');
 
     let lastError: any = null;
     for (const path of candidatePaths) {
@@ -165,13 +154,7 @@ const postSimulateGameFlow = async (
                 }> | {
                     cycle_id?: string;
                 }
-            >(path, payload, {
-                headers: SIMULATION_API_SECRET
-                    ? {
-                          'X-Simulation-Secret': SIMULATION_API_SECRET,
-                      }
-                    : undefined,
-            });
+            >(path, payload);
 
             const data = unwrap(response.data);
             const hintedCycleId = String((data as any)?.cycle_id || cycleId);
@@ -274,7 +257,8 @@ export const thresholdGameService = {
             auto_create_game: payload.auto_create_game ?? true,
             auto_publish_game: payload.auto_publish_game ?? true,
             auto_close_game: payload.auto_close_game ?? true,
-            auto_rollover: payload.auto_rollover ?? true,
+            // Production guide requires this to remain enabled.
+            auto_rollover: true,
         };
 
         try {

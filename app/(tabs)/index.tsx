@@ -210,8 +210,8 @@ export default function HomeScreen() {
             if (lower.includes('not allowed')) {
                 setStatusModal({
                     visible: true,
-                    title: 'Simulation Permission',
-                    message: 'Your account is not allowed to run simulation endpoints.',
+                    title: 'Simulation Unavailable',
+                    message: 'Simulation is currently unavailable right now. Please try again shortly.',
                     variant: 'info',
                 });
                 return;
