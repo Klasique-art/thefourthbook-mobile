@@ -43,7 +43,7 @@ const CurrentCycleBanner = ({ currentPool, threshold, beneficiariesCount, distri
 
             <View className="bg-black/20 rounded-2xl p-2 mb-4">
                 <View className="flex-row items-center justify-between mb-2">
-                    <AppText className="font-bold">Threshold Trigger Model</AppText>
+                    <AppText className="font-bold">Goal Progress</AppText>
                     <Ionicons name="flash-outline" size={16} color="#FFF" />
                 </View>
                 <NextDrawCountdown

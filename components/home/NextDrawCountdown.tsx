@@ -102,6 +102,7 @@ const NextDrawCountdown = ({
         setIsTestMode(false);
         setSimulatedPool(currentPool);
     };
+    const showDevGoalButton = __DEV__;
 
     return (
         <LinearGradient
@@ -119,7 +120,7 @@ const NextDrawCountdown = ({
                     <Ionicons name="speedometer-outline" size={16} color="#FFFFFF" />
                 </View>
                 <AppText className="text-lg font-bold" color={colors.white}>
-                    Distribution Trigger Progress
+                    Payout Goal Progress
                 </AppText>
             </View>
 
@@ -134,12 +135,12 @@ const NextDrawCountdown = ({
                     <View className="flex-row items-center justify-between">
                         <View className="mr-3 flex-1">
                             <AppText className="text-lg font-bold" color={colors.white}>
-                                {isGameOpen ? 'Threshold Met' : 'Cycle Locked'}
+                                {isGameOpen ? 'Goal Reached' : 'Cycle Closed'}
                             </AppText>
                             <AppText className="text-xs mt-1" color={colors.white}>
                                 {isGameOpen
                                     ? 'Play this game to get higher chance of winning the next distribution.'
-                                    : 'Threshold phase is active. Waiting for the next backend state transition.'}
+                                    : 'Goal stage is active. Waiting for the next backend update.'}
                             </AppText>
                         </View>
                         <Ionicons name="trophy" size={24} color={colors.white} />
@@ -211,17 +212,19 @@ const NextDrawCountdown = ({
                         </AppText>
                     </View>
 
-                    <AppButton
-                        title={isSimulating ? 'Updating threshold...' : 'Update Threshold'}
-                        variant="outline"
-                        size="sm"
-                        icon="flash"
-                        onClick={handleSimulateThreshold}
-                        loading={isSimulating}
-                        disabled={isSimulating}
-                        fullWidth
-                        style={{ marginTop: 12, borderColor: colors.white }}
-                    />
+                    {showDevGoalButton ? (
+                        <AppButton
+                            title={isSimulating ? 'Updating goal...' : 'Reach $1M Now'}
+                            variant="outline"
+                            size="sm"
+                            icon="flash"
+                            onClick={handleSimulateThreshold}
+                            loading={isSimulating}
+                            disabled={isSimulating}
+                            fullWidth
+                            style={{ marginTop: 12, borderColor: colors.white }}
+                        />
+                    ) : null}
                     {isTestMode && (
                         <AppButton
                             title="Back to live pool"

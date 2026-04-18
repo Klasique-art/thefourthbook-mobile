@@ -64,10 +64,10 @@ const formatRemaining = (remainingMs: number): string => {
 const stateToAlert = (state: DistributionState): AlertState => {
     if (state === 'threshold_met_game_open') return null;
     if (state === 'collecting') {
-        return { tone: 'info', message: 'Threshold has not been reached yet. The game will open once the pool target is met.' };
+        return { tone: 'info', message: 'The pool has not reached the goal yet. The game opens after the goal is met.' };
     }
     if (state === 'threshold_met_game_pending') {
-        return { tone: 'info', message: 'Threshold reached. The game is being prepared and will open shortly.' };
+        return { tone: 'info', message: 'Goal reached. The game is being prepared and will open shortly.' };
     }
     if (state === 'threshold_met_game_closed') {
         return { tone: 'info', message: 'Game submissions are closed for this cycle.' };
@@ -639,10 +639,10 @@ const ThresholdGameScreen = () => {
                         className="mb-2 w-full items-center rounded-2xl border px-4 py-3"
                         style={{ backgroundColor: colors.backgroundAlt, borderColor: colors.border }}
                     >
-                        <AppText className="text-base font-semibold">Threshold Game</AppText>
+                        <AppText className="text-base font-semibold">Target Game</AppText>
                     </View>
                 ) : (
-                    <Nav title="Threshold Game" />
+                    <Nav title="Target Game" />
                 )}
                 <View className="flex-1 items-center justify-center">
                     <ActivityIndicator size="large" color={colors.accent} />
@@ -661,10 +661,10 @@ const ThresholdGameScreen = () => {
                     className="mb-2 w-full items-center rounded-2xl border px-4 py-3"
                     style={{ backgroundColor: colors.backgroundAlt, borderColor: colors.border }}
                 >
-                    <AppText className="text-base font-semibold">Threshold Game</AppText>
+                    <AppText className="text-base font-semibold">Target Game</AppText>
                 </View>
             ) : (
-                <Nav title="Threshold Game" />
+                <Nav title="Target Game" />
             )}
 
             {!game ? (
@@ -776,7 +776,7 @@ const ThresholdGameScreen = () => {
                             }}
                         >
                             <AppText className="text-center text-sm" style={{ color: alert?.tone === 'error' ? colors.error : colors.textSecondary }}>
-                                {alert?.message ?? 'No active threshold game right now.'}
+                                {alert?.message ?? 'No active target game right now.'}
                             </AppText>
                             <AppText className="mt-2 text-center text-xs" style={{ color: colors.textSecondary }}>
                                 {lastUpdatedLabel ? `Last updated: ${lastUpdatedLabel}` : 'Checking cycle status...'}

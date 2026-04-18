@@ -220,7 +220,7 @@ export default function HomeScreen() {
             setStatusModal({
                 visible: true,
                 title: 'Update Failed',
-                message: message || 'Could not update threshold status.',
+                message: message || 'Could not update goal status.',
                 variant: 'error',
             });
         }
@@ -276,7 +276,7 @@ export default function HomeScreen() {
                     message:
                         state === 'threshold_met_game_closed' || state === 'distribution_processing'
                             ? 'Game window is closed for this cycle.'
-                            : 'The threshold game is not open for this cycle yet.',
+                            : 'The target game is not open for this cycle yet.',
                     variant: 'info',
                 });
                 return;
@@ -286,7 +286,7 @@ export default function HomeScreen() {
                 setStatusModal({
                     visible: true,
                     title: 'Game Unavailable',
-                    message: 'No active threshold game is available right now.',
+                    message: 'No active target game is available right now.',
                     variant: 'info',
                 });
                 return;

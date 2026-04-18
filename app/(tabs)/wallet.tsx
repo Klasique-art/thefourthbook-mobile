@@ -176,7 +176,7 @@ export default function WalletScreen() {
             normalized === 'threshold_met_game_closed' ||
             normalized === 'closed'
         ) {
-            return 'Contributions are closed. Cycle target has been reached and threshold game/distribution steps are in progress.';
+            return 'Contributions are closed. The cycle goal has been reached and game/payout steps are in progress.';
         }
         if (normalized === 'drawing' || normalized === 'distribution_processing') {
             return 'Contributions are paused while distribution is being processed.';
@@ -258,8 +258,6 @@ export default function WalletScreen() {
     );
 
     const lastUpdatedLabel = useMemo(() => formatDateTimeLabel(lastSyncedAt), [lastSyncedAt]);
-    const hasSelectedBank = Boolean(payoutForm.bankName.trim() && payoutForm.bankCode.trim());
-
     const openStatusModal = (title: string, message: string, variant: 'success' | 'error' | 'info') => {
         setStatusModal({ visible: true, title, message, variant });
     };
@@ -499,39 +497,12 @@ export default function WalletScreen() {
         []
     );
 
-    const handleLoadBanksByCountry = useCallback(async () => {
-        const countryCode = payoutForm.countryCode.trim().toUpperCase();
-        if (countryCode.length !== 2) {
-            openStatusModal('Country Code Required', 'Enter a valid 2-letter country code first (for example: US, NG, GH).', 'info');
-            return;
-        }
-        setIsBankLookupLoading(true);
-        try {
-            const payload = await payoutAccountService.getBanksByCountry(countryCode);
-            setBankOptions(payload.banks);
-            setBankSource(payload.source ?? null);
-            if (payload.banks.length === 0) {
-                setBankLookupNote('No banks found for this country. Manual details may be required.');
-            } else if (String(payload.source || '').toLowerCase() === 'manual') {
-                setBankLookupNote('Manual verification route detected. Enter bank name and bank code if needed.');
-            } else {
-                setBankLookupNote(null);
-            }
-        } catch (error: any) {
-            setBankOptions([]);
-            setBankLookupNote(null);
-            openStatusModal('Bank Lookup Failed', getErrorMessage(error, 'Could not load banks for this country.'), 'error');
-        } finally {
-            setIsBankLookupLoading(false);
-        }
-    }, [payoutForm.countryCode]);
-
     const handleSelectBankOption = useCallback((bank: PayoutBank) => {
         setPayoutForm((prev) => ({
             ...prev,
             bankName: bank.bank_name,
             bankCode: bank.bank_code,
-            countryCode: String(bank.country_code || prev.countryCode).toUpperCase(),
+            countryCode: String(bank.country_code || '').toUpperCase(),
         }));
         setBankSearchQuery(bank.bank_name);
         setBankLookupNote(null);
@@ -553,7 +524,7 @@ export default function WalletScreen() {
         const countryCode = payoutForm.countryCode.trim().toUpperCase();
 
         if (!bankName || !accountNumber || !bankCode || countryCode.length !== 2) {
-            openStatusModal('Missing Details', 'Country code, bank name, account number, and bank code are required.', 'info');
+            openStatusModal('Missing Details', 'Select a bank first so country is auto-detected, then add account number.', 'info');
             return;
         }
 
@@ -968,16 +939,9 @@ export default function WalletScreen() {
                                     Add Bank Account
                                 </AppText>
                                 <View className="mt-3 gap-3">
-                                    <AppInput
-                                        name="payout-country-code"
-                                        label="Country Code"
-                                        value={payoutForm.countryCode}
-                                        onChange={(value) => handlePayoutFormChange('countryCode', value.toUpperCase())}
-                                        placeholder="e.g. US, NG, GH"
-                                        autoCapitalize="characters"
-                                        maxLength={2}
-                                        accessibilityHint="Required 2-letter country code."
-                                    />
+                                    <AppText className="text-xs" style={{ color: payoutSectionPalette.text }}>
+                                        Country: {payoutForm.countryCode || 'Auto-detected after bank selection'}
+                                    </AppText>
                                     <AppInput
                                         name="payout-bank-search"
                                         label="Search Bank"
@@ -987,16 +951,6 @@ export default function WalletScreen() {
                                         autoCapitalize="words"
                                         accessibilityHint="Search and select a bank to auto-fill bank name and bank code."
                                     />
-                                    {!hasSelectedBank ? (
-                                        <AppButton
-                                            title={isBankLookupLoading ? 'Loading Banks...' : 'Load Country Banks'}
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={handleLoadBanksByCountry}
-                                            loading={isBankLookupLoading}
-                                            accessibilityLabel="Load payout banks for selected country"
-                                        />
-                                    ) : null}
                                     {isBankLookupLoading ? (
                                         <AppText className="text-xs" style={{ color: payoutSectionPalette.text }} accessibilityLiveRegion="polite">
                                             Searching banks...
