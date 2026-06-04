@@ -1,5 +1,5 @@
 import * as AuthSession from 'expo-auth-session';
-import { Ionicons } from '@expo/vector-icons';
+// import { Ionicons } from '@expo/vector-icons';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
@@ -105,7 +105,7 @@ const LoginScreen = () => {
         native: `${androidPackage}://oauthredirect`,
     });
 
-    const [googleRequest, googleResponse, promptGoogleLogin] = Google.useIdTokenAuthRequest({
+    const [googleRequest, googleResponse] = Google.useIdTokenAuthRequest({
         clientId: GOOGLE_WEB_CLIENT_ID || undefined,
         androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
         iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
@@ -244,22 +244,22 @@ const LoginScreen = () => {
         void run();
     }, [googleResponse, loginWithGoogle]);
 
-    const handleGoogleSignIn = async () => {
-        if (!GOOGLE_ANDROID_CLIENT_ID && !GOOGLE_IOS_CLIENT_ID && !GOOGLE_WEB_CLIENT_ID) {
-            setApiError('Google login is not configured yet. Add Google client IDs in app config.');
-            return;
-        }
+    // const handleGoogleSignIn = async () => {
+    //     if (!GOOGLE_ANDROID_CLIENT_ID && !GOOGLE_IOS_CLIENT_ID && !GOOGLE_WEB_CLIENT_ID) {
+    //         setApiError('Google login is not configured yet. Add Google client IDs in app config.');
+    //         return;
+    //     }
 
-        console.log(`[GoogleAuth][login] redirect_uri=${googleRedirectUri}`);
-        console.log(
-            `[GoogleAuth][login] client_ids :: android=${Boolean(GOOGLE_ANDROID_CLIENT_ID)} ios=${Boolean(
-                GOOGLE_IOS_CLIENT_ID
-            )} web=${Boolean(GOOGLE_WEB_CLIENT_ID)}`
-        );
-        setApiError('');
-        const result = await promptGoogleLogin();
-        console.log(`[GoogleAuth][login] prompt_result_type=${result.type}`);
-    };
+    //     console.log(`[GoogleAuth][login] redirect_uri=${googleRedirectUri}`);
+    //     console.log(
+    //         `[GoogleAuth][login] client_ids :: android=${Boolean(GOOGLE_ANDROID_CLIENT_ID)} ios=${Boolean(
+    //             GOOGLE_IOS_CLIENT_ID
+    //         )} web=${Boolean(GOOGLE_WEB_CLIENT_ID)}`
+    //     );
+    //     setApiError('');
+    //     const result = await promptGoogleLogin();
+    //     console.log(`[GoogleAuth][login] prompt_result_type=${result.type}`);
+    // };
 
     return (
         <Screen>
